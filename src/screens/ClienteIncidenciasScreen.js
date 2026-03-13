@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, Modal, ScrollView, RefreshControl,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../context/AuthContext'
 import { getIncidenciasCliente, createIncidencia } from '../services/api'
@@ -43,12 +44,21 @@ export default function ClienteIncidenciasScreen() {
     } catch (e) { Alert.alert('Error', e.message) }
   }
 
-  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#0066ff" /></View>
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.center}><ActivityIndicator size="large" color="#0047b3" /></View>
+      </SafeAreaView>
+    )
+  }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <Text style={styles.title}>Mis Incidencias</Text>
+        <View>
+          <Text style={styles.title}>Mis Incidencias</Text>
+          {user?.nombre && <Text style={styles.subtitle}>{user.nombre}</Text>}
+        </View>
         <TouchableOpacity onPress={() => setShowCreate(true)} style={styles.newBtn}>
           <Ionicons name="add" size={18} color="#fff" />
           <Text style={styles.newBtnText}>Nueva</Text>
@@ -59,29 +69,33 @@ export default function ClienteIncidenciasScreen() {
         data={tickets}
         keyExtractor={item => String(item.id)}
         contentContainerStyle={{ padding: 12 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load() }} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); load() }}
+            tintColor="#0047b3"
+          />
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="ticket-outline" size={48} color="#334155" />
+            <Ionicons name="ticket-outline" size={56} color="#334155" />
             <Text style={styles.empty}>Sin incidencias</Text>
             <Text style={styles.emptySub}>Pulsa "Nueva" para crear tu primera incidencia</Text>
           </View>
         }
         renderItem={({ item }) => (
           <View style={styles.card}>
-            <View style={styles.cardTop}>
-              <Text style={styles.cardTitulo} numberOfLines={2}>{item.titulo}</Text>
-              <View style={[styles.badge, { backgroundColor: PRIO_COLOR[item.prioridad] || '#64748b' }]}>
-                <Text style={styles.badgeText}>{item.prioridad}</Text>
+            <View style={[styles.prioBar, { backgroundColor: PRIO_COLOR[item.prioridad] || '#64748b' }]} />
+            <View style={styles.cardBody}>
+              <View style={styles.cardTop}>
+                <Text style={styles.cardTitulo} numberOfLines={2}>{item.titulo}</Text>
+                <View style={[styles.badge, { backgroundColor: ESTADO_COLOR[item.estado] || '#64748b' }]}>
+                  <Text style={styles.badgeText}>{item.estado?.replace('_', ' ')}</Text>
+                </View>
               </View>
-            </View>
-            {item.descripcion && (
-              <Text style={styles.cardDesc} numberOfLines={2}>{item.descripcion}</Text>
-            )}
-            <View style={styles.cardBottom}>
-              <View style={[styles.estadoBadge, { backgroundColor: ESTADO_COLOR[item.estado] || '#64748b' }]}>
-                <Text style={styles.badgeText}>{item.estado?.replace('_', ' ')}</Text>
-              </View>
+              {item.descripcion && (
+                <Text style={styles.cardDesc} numberOfLines={2}>{item.descripcion}</Text>
+              )}
               <Text style={styles.cardFecha}>{formatFecha(item.created_at)}</Text>
             </View>
           </View>
@@ -90,17 +104,17 @@ export default function ClienteIncidenciasScreen() {
 
       {/* Modal nueva incidencia */}
       <Modal visible={showCreate} animationType="slide" onRequestClose={() => setShowCreate(false)}>
-        <View style={styles.modalContainer}>
+        <SafeAreaView style={styles.safe}>
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowCreate(false)}>
-              <Ionicons name="close" size={24} color="#fff" />
+            <TouchableOpacity onPress={() => setShowCreate(false)} style={styles.iconBtn}>
+              <Ionicons name="close" size={22} color="#fff" />
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Nueva Incidencia</Text>
-            <TouchableOpacity onPress={handleCreate}>
-              <Text style={{ color: '#0066ff', fontWeight: '700' }}>Enviar</Text>
+            <TouchableOpacity onPress={handleCreate} style={styles.saveBtn}>
+              <Text style={styles.saveBtnText}>Enviar</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView style={styles.modalBody}>
+          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
             <Text style={styles.fieldLabel}>Título *</Text>
             <TextInput
               style={styles.fieldInput}
@@ -126,43 +140,46 @@ export default function ClienteIncidenciasScreen() {
                   style={[styles.prioBtn, form.prioridad === p && { backgroundColor: PRIO_COLOR[p] }]}
                   onPress={() => setForm(f => ({ ...f, prioridad: p }))}
                 >
-                  <Text style={styles.prioBtnText}>{p}</Text>
+                  <Text style={[styles.prioBtnText, form.prioridad === p && { color: '#fff' }]}>{p}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
-    </View>
+    </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: '#0f172a' },
+  safe:           { flex: 1, backgroundColor: '#0f172a' },
   center:         { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#1e293b', borderBottomWidth: 1, borderBottomColor: '#334155' },
   title:          { color: '#fff', fontSize: 18, fontWeight: '700' },
-  newBtn:         { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#0066ff', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
-  newBtnText:     { color: '#fff', fontWeight: '600', fontSize: 14 },
-  emptyContainer: { alignItems: 'center', marginTop: 60, gap: 8 },
+  subtitle:       { color: '#64748b', fontSize: 12, marginTop: 1 },
+  newBtn:         { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#0047b3', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  newBtnText:     { color: '#fff', fontWeight: '600', fontSize: 13 },
+  emptyContainer: { alignItems: 'center', marginTop: 64, gap: 10 },
   empty:          { color: '#64748b', fontSize: 16, fontWeight: '600' },
-  emptySub:       { color: '#475569', fontSize: 13, textAlign: 'center' },
-  card:           { backgroundColor: '#1e293b', borderRadius: 10, padding: 14, marginBottom: 10 },
+  emptySub:       { color: '#475569', fontSize: 13, textAlign: 'center', paddingHorizontal: 32 },
+  card:           { flexDirection: 'row', backgroundColor: '#1e293b', borderRadius: 10, marginBottom: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#334155' },
+  prioBar:        { width: 4 },
+  cardBody:       { flex: 1, padding: 14 },
   cardTop:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6, gap: 8 },
   cardTitulo:     { color: '#fff', fontWeight: '600', fontSize: 15, flex: 1 },
-  cardDesc:       { color: '#94a3b8', fontSize: 13, lineHeight: 18, marginBottom: 10 },
-  cardBottom:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  badge:          { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  estadoBadge:    { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  cardDesc:       { color: '#94a3b8', fontSize: 13, lineHeight: 19, marginBottom: 8 },
+  badge:          { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
   badgeText:      { color: '#fff', fontSize: 11, fontWeight: '600' },
   cardFecha:      { color: '#475569', fontSize: 12 },
-  modalContainer: { flex: 1, backgroundColor: '#0f172a' },
-  modalHeader:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, backgroundColor: '#1e293b', borderBottomWidth: 1, borderBottomColor: '#334155' },
-  modalTitle:     { color: '#fff', fontWeight: '700', fontSize: 16, flex: 1, marginHorizontal: 12 },
+  modalHeader:    { flexDirection: 'row', alignItems: 'center', padding: 14, backgroundColor: '#1e293b', borderBottomWidth: 1, borderBottomColor: '#334155' },
+  iconBtn:        { padding: 4 },
+  modalTitle:     { color: '#fff', fontWeight: '700', fontSize: 16, flex: 1, marginHorizontal: 10 },
+  saveBtn:        { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#0047b3', borderRadius: 8 },
+  saveBtnText:    { color: '#fff', fontWeight: '700', fontSize: 14 },
   modalBody:      { flex: 1, padding: 16 },
-  fieldLabel:     { color: '#94a3b8', fontSize: 13, marginBottom: 6, marginTop: 14 },
-  fieldInput:     { backgroundColor: '#1e293b', color: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#334155', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
+  fieldLabel:     { color: '#94a3b8', fontSize: 13, marginBottom: 6, marginTop: 16, fontWeight: '500' },
+  fieldInput:     { backgroundColor: '#1e293b', color: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#334155', paddingHorizontal: 12, paddingVertical: 11, fontSize: 14 },
   prioRow:        { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 4 },
-  prioBtn:        { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: '#1e293b' },
-  prioBtnText:    { color: '#cbd5e1', fontSize: 13 },
+  prioBtn:        { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: '#1e293b', borderWidth: 1, borderColor: '#334155' },
+  prioBtnText:    { color: '#94a3b8', fontSize: 13 },
 })

@@ -18,57 +18,62 @@ import ClienteIncidenciasScreen from '../screens/ClienteIncidenciasScreen'
 const Stack = createNativeStackNavigator()
 const Tab   = createBottomTabNavigator()
 
-// Tabs para admin/gestor/operario
+const ICONS = {
+  Dashboard:      ['grid',        'grid-outline'],
+  Tickets:        ['ticket',      'ticket-outline'],
+  Chat:           ['chatbubbles', 'chatbubbles-outline'],
+  Estadísticas:   ['bar-chart',   'bar-chart-outline'],
+  Usuarios:       ['people',      'people-outline'],
+  'Mis Incidencias': ['ticket',   'ticket-outline'],
+}
+
+const TAB_OPTIONS = {
+  tabBarStyle:            { backgroundColor: '#1e293b', borderTopColor: '#334155', height: 56 },
+  tabBarActiveTintColor:  '#0047b3',
+  tabBarInactiveTintColor:'#64748b',
+  headerShown:            false,
+  tabBarIcon: ({ focused, color, size, route }) => {
+    const [active, inactive] = ICONS[route?.name] || ['ellipse', 'ellipse-outline']
+    return <Ionicons name={focused ? active : inactive} size={size} color={color} />
+  },
+}
+
 function AdminTabs() {
-  const { isAdmin, isGestor } = useAuth()
+  const { user, isAdmin, isGestor } = useAuth()
+  const rol = user?.rol
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
+        ...TAB_OPTIONS,
         tabBarIcon: ({ focused, color, size }) => {
-          const icons = {
-            Dashboard:   focused ? 'grid'          : 'grid-outline',
-            Tickets:     focused ? 'ticket'        : 'ticket-outline',
-            Chat:        focused ? 'chatbubbles'   : 'chatbubbles-outline',
-            Estadísticas:focused ? 'bar-chart'     : 'bar-chart-outline',
-            Usuarios:    focused ? 'people'        : 'people-outline',
-          }
-          return <Ionicons name={icons[route.name] || 'ellipse'} size={size} color={color} />
+          const [active, inactive] = ICONS[route.name] || ['ellipse', 'ellipse-outline']
+          return <Ionicons name={focused ? active : inactive} size={size} color={color} />
         },
-        tabBarStyle:            { backgroundColor: '#1e293b', borderTopColor: '#334155' },
-        tabBarActiveTintColor:  '#0066ff',
-        tabBarInactiveTintColor:'#64748b',
-        headerShown:            false,
       })}
     >
       <Tab.Screen name="Dashboard"    component={DashboardScreen} />
       <Tab.Screen name="Tickets"      component={TicketsScreen} />
       <Tab.Screen name="Chat"         component={ChatScreen} />
-      {(isAdmin() || isGestor()) && (
+      {(rol === 'admin' || rol === 'gestor') && (
         <Tab.Screen name="Estadísticas" component={EstadisticasScreen} />
       )}
-      {isAdmin() && (
+      {rol === 'admin' && (
         <Tab.Screen name="Usuarios" component={UsuariosScreen} />
       )}
     </Tab.Navigator>
   )
 }
 
-// Tabs para clientes
 function ClienteTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
+        ...TAB_OPTIONS,
         tabBarIcon: ({ focused, color, size }) => {
-          const icons = {
-            'Mis Incidencias': focused ? 'ticket'      : 'ticket-outline',
-            Chat:              focused ? 'chatbubbles' : 'chatbubbles-outline',
-          }
-          return <Ionicons name={icons[route.name] || 'ellipse'} size={size} color={color} />
+          const [active, inactive] = ICONS[route.name] || ['ellipse', 'ellipse-outline']
+          return <Ionicons name={focused ? active : inactive} size={size} color={color} />
         },
-        tabBarStyle:             { backgroundColor: '#1e293b', borderTopColor: '#334155' },
-        tabBarActiveTintColor:   '#0066ff',
-        tabBarInactiveTintColor: '#64748b',
-        headerShown:             false,
       })}
     >
       <Tab.Screen name="Mis Incidencias" component={ClienteIncidenciasScreen} />
@@ -83,7 +88,7 @@ export default function AppNavigator() {
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a' }}>
-        <ActivityIndicator size="large" color="#0066ff" />
+        <ActivityIndicator size="large" color="#0047b3" />
       </View>
     )
   }
