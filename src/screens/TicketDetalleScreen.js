@@ -112,6 +112,16 @@ export default function TicketDetalleScreen({ route, navigation }) {
     loadAll().finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const data = await getTicketComentarios(initialTicket.id)
+        setComentarios(Array.isArray(data) ? data : [])
+      } catch {}
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [initialTicket.id])
+
   // ── Estado / Prioridad ──────────────────────────────────────────────────────
   async function changeEstado(estado) {
     try {
