@@ -1,8 +1,6 @@
 import * as SecureStore from 'expo-secure-store'
 
-// ── Cambia esta IP por la IP local de tu PC donde corre el backend ──────────
-// Ejemplo: si tu PC tiene IP 192.168.1.100 y el backend corre en el puerto 3000:
-export const API_URL = 'http://192.168.1.100:3000'
+export const API_URL = 'http://192.168.20.52:3000'
 // ────────────────────────────────────────────────────────────────────────────
 
 async function tryRefreshTokenInternal() {
@@ -69,6 +67,7 @@ export async function apiFetch(path, options = {}, _isRetry = false) {
 
 // ── Empresas ──────────────────────────────────────────────────────────────
 export const getEmpresas           = ()         => apiFetch('/api/empresas')
+export const getEmpresa            = (id)       => apiFetch(`/api/empresas/${id}`)
 export const createEmpresa         = (d)        => apiFetch('/api/empresas', { method: 'POST', body: JSON.stringify(d) })
 export const updateEmpresa         = (id, d)    => apiFetch(`/api/empresas/${id}`, { method: 'PUT', body: JSON.stringify(d) })
 export const deleteEmpresa         = (id)       => apiFetch(`/api/empresas/${id}`, { method: 'DELETE' })
@@ -115,6 +114,20 @@ export const getArchivoUrl         = (id)       => apiFetch(`/api/v2/archivos/${
 export const deleteArchivo         = (id)       => apiFetch(`/api/v2/archivos/${id}`, { method: 'DELETE' })
 export const addTicketHoras        = (tid, d)   => apiFetch(`/api/v2/tickets/${tid}/horas`, { method: 'POST', body: JSON.stringify(d) })
 
+export async function uploadTicketArchivos(ticketId, files) {
+  const token = await SecureStore.getItemAsync('hola_token')
+  const formData = new FormData()
+  formData.append('file_names', JSON.stringify(files.map(f => f.name)))
+  files.forEach(f => formData.append('files', { uri: f.uri, name: f.name, type: f.mimeType || 'application/octet-stream' }))
+  const res = await fetch(`${API_URL}/api/v2/tickets/${ticketId}/archivos`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+  if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Error al subir archivos') }
+  return res.json()
+}
+
 // ── Operarios / Usuarios ──────────────────────────────────────────────────
 export const getOperarios          = ()         => apiFetch('/api/v2/operarios')
 export const getUsuarios           = ()         => apiFetch('/api/usuarios')
@@ -125,6 +138,16 @@ export const deleteUsuario         = (id)       => apiFetch(`/api/usuarios/${id}
 // ── Incidencias (Cliente) ─────────────────────────────────────────────────
 export const getIncidenciasCliente = ()         => apiFetch('/api/v2/tickets')
 export const createIncidencia      = (d)        => apiFetch('/api/v2/tickets/incidencia', { method: 'POST', body: JSON.stringify(d) })
+
+export async function createIncidenciaConArchivos(asunto, descripcion, archivos = []) {
+  const form = new FormData()
+  form.append('asunto', asunto)
+  if (descripcion) form.append('descripcion', descripcion)
+  for (const file of archivos) {
+    form.append('archivos', { uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' })
+  }
+  return apiFetch('/api/v2/tickets/incidencia', { method: 'POST', body: form })
+}
 
 // ── Estadísticas ──────────────────────────────────────────────────────────
 export const getEstadisticasResumen   = ()      => apiFetch('/api/v2/estadisticas/resumen')
@@ -143,15 +166,30 @@ export const pinChatMensaje        = (id, a)    => apiFetch(`/api/v2/chat/mensaj
 export const addChatMiembros       = (cid, m)   => apiFetch(`/api/v2/chat/canales/${cid}/miembros`, { method: 'POST', body: JSON.stringify({ miembros: m }) })
 export const getChatArchivoUrl     = (id)       => apiFetch(`/api/v2/chat/archivos/${id}/url`)
 
-export async function sendChatMensaje(canalId, contenido, ticketRefId = null) {
+export async function sendChatMensaje(canalId, contenido, ticketRefId = null, files = []) {
   const token = await SecureStore.getItemAsync('hola_token')
-  const body = { contenido }
-  if (ticketRefId) body.ticket_ref_id = ticketRefId
-  const res = await fetch(`${API_URL}/api/v2/chat/canales/${canalId}/mensajes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Error al enviar mensaje') }
-  return res.json()
+  if (files && files.length > 0) {
+    const formData = new FormData()
+    formData.append('contenido', contenido || '')
+    if (ticketRefId) formData.append('ticket_ref_id', String(ticketRefId))
+    formData.append('file_names', JSON.stringify(files.map(f => f.name)))
+    files.forEach(f => formData.append('files', { uri: f.uri, name: f.name, type: f.mimeType || 'application/octet-stream' }))
+    const res = await fetch(`${API_URL}/api/v2/chat/canales/${canalId}/mensajes`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    })
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Error al enviar') }
+    return res.json()
+  } else {
+    const body = { contenido: contenido || '' }
+    if (ticketRefId) body.ticket_ref_id = ticketRefId
+    const res = await fetch(`${API_URL}/api/v2/chat/canales/${canalId}/mensajes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Error al enviar') }
+    return res.json()
+  }
 }

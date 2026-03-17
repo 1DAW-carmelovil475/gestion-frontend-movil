@@ -13,7 +13,6 @@ export default function LoginScreen() {
   const [error, setError]               = useState('')
   const [loading, setLoading]           = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-
   const { login } = useAuth()
 
   async function handleSubmit() {
@@ -26,7 +25,7 @@ export default function LoginScreen() {
     try {
       await login(email.trim(), password)
     } catch (err) {
-      setError(err.message)
+      setError(err.message || 'Email o contraseña incorrectos.')
       setPassword('')
     } finally {
       setLoading(false)
@@ -44,9 +43,9 @@ export default function LoginScreen() {
             {/* Logo */}
             <View style={styles.logoSection}>
               <View style={styles.logoBox}>
-                <Text style={styles.logoText}>HI</Text>
+                <Text style={styles.logoHola}>Hola</Text>
+                <Text style={styles.logoIT}>.IT</Text>
               </View>
-              <Text style={styles.title}>Hola Informática</Text>
               <Text style={styles.subtitle}>Panel de Gestión · Acceso</Text>
             </View>
 
@@ -60,7 +59,9 @@ export default function LoginScreen() {
 
             {/* Email */}
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Email</Text>
+              <Text style={styles.label}>
+                <Ionicons name="mail-outline" size={13} color="#374151" /> Email
+              </Text>
               <TextInput
                 style={styles.input}
                 placeholder="tu@email.com"
@@ -69,26 +70,31 @@ export default function LoginScreen() {
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
-                autoComplete="email"
+                autoCorrect={false}
+                editable={!loading}
               />
             </View>
 
             {/* Password */}
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Contraseña</Text>
+              <Text style={styles.label}>
+                <Ionicons name="lock-closed-outline" size={13} color="#374151" /> Contraseña
+              </Text>
               <View style={styles.inputWrap}>
                 <TextInput
                   style={[styles.input, styles.inputPwd]}
-                  placeholder="••••••••"
+                  placeholder="••••••••••"
                   placeholderTextColor="#9ca3af"
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
-                  autoComplete="password"
+                  autoCapitalize="none"
+                  editable={!loading}
                 />
                 <TouchableOpacity
                   style={styles.eyeBtn}
                   onPress={() => setShowPassword(v => !v)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Ionicons
                     name={showPassword ? 'eye-off-outline' : 'eye-outline'}
@@ -99,16 +105,20 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            {/* Botón */}
+            {/* Submit button */}
             <TouchableOpacity
               style={[styles.btn, loading && styles.btnDisabled]}
               onPress={handleSubmit}
               disabled={loading}
+              activeOpacity={0.85}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.btnText}>Entrar</Text>
+                <View style={styles.btnInner}>
+                  <Text style={styles.btnText}>Entrar</Text>
+                  <Ionicons name="arrow-forward" size={18} color="#ffffff" style={{ marginLeft: 8 }} />
+                </View>
               )}
             </TouchableOpacity>
 
@@ -121,25 +131,50 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe:        { flex: 1, backgroundColor: '#0f172a' },
-  container:   { flex: 1 },
-  scroll:      { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  card:        { width: '100%', maxWidth: 420, backgroundColor: '#1e293b', borderRadius: 16, padding: 28, borderWidth: 1, borderColor: '#334155' },
+  safe:      { flex: 1, backgroundColor: '#0047b3' },
+  container: { flex: 1 },
+  scroll:    { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#0047b3' },
+  card: {
+    width: '100%', maxWidth: 420,
+    backgroundColor: '#ffffff',
+    borderRadius: 16, padding: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25, shadowRadius: 20,
+    elevation: 12,
+  },
   logoSection: { alignItems: 'center', marginBottom: 28 },
-  logoBox:     { width: 64, height: 64, borderRadius: 16, backgroundColor: '#0047b3', justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
-  logoText:    { color: '#fff', fontWeight: '800', fontSize: 22, letterSpacing: 1 },
-  title:       { color: '#fff', fontSize: 22, fontWeight: '700' },
-  subtitle:    { color: '#64748b', fontSize: 13, marginTop: 4 },
-  errorBox:    { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fef2f2', borderRadius: 8, padding: 10, marginBottom: 16, gap: 8 },
-  errorText:   { color: '#dc2626', fontSize: 13, flex: 1 },
+  logoBox: {
+    flexDirection: 'row', alignItems: 'flex-end',
+    marginBottom: 10,
+  },
+  logoHola: {
+    fontSize: 38, fontWeight: '800', color: '#0047b3', letterSpacing: -1,
+  },
+  logoIT: {
+    fontSize: 20, fontWeight: '700', color: '#0047b3', marginBottom: 4, opacity: 0.65,
+  },
+  subtitle:    { color: '#64748b', fontSize: 13, fontWeight: '500', letterSpacing: 0.2 },
+  errorBox:    { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#fca5a5', borderRadius: 8, padding: 10, marginBottom: 16, gap: 8 },
+  errorText:   { color: '#dc2626', fontSize: 13, flex: 1, fontWeight: '500' },
   fieldGroup:  { marginBottom: 16 },
-  label:       { color: '#94a3b8', fontSize: 13, marginBottom: 6, fontWeight: '500' },
-  input:       { backgroundColor: '#0f172a', color: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#334155', paddingHorizontal: 14, paddingVertical: 13, fontSize: 15 },
+  label:       { color: '#374151', fontSize: 13, marginBottom: 6, fontWeight: '600' },
+  input: {
+    backgroundColor: '#f9fafb', borderWidth: 1.5, borderColor: '#e2e8f0', borderRadius: 8,
+    paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 14 : 10,
+    fontSize: 15, color: '#1e2a45',
+  },
   inputWrap:   { position: 'relative' },
   inputPwd:    { paddingRight: 48 },
-  eyeBtn:      { position: 'absolute', right: 14, top: 13 },
-  btn:         { backgroundColor: '#0047b3', borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
-  btnDisabled: { opacity: 0.6 },
-  btnText:     { color: '#fff', fontWeight: '600', fontSize: 16 },
-  footer:      { color: '#475569', fontSize: 12, textAlign: 'center', marginTop: 24 },
+  eyeBtn:      { position: 'absolute', right: 14, top: 0, bottom: 0, justifyContent: 'center' },
+  btn: {
+    backgroundColor: '#0047b3', borderRadius: 8, paddingVertical: 14,
+    alignItems: 'center', justifyContent: 'center', marginTop: 8, marginBottom: 20,
+    shadowColor: '#0047b3', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+  },
+  btnDisabled: { opacity: 0.65 },
+  btnInner:    { flexDirection: 'row', alignItems: 'center' },
+  btnText:     { color: '#fff', fontWeight: '700', fontSize: 16, letterSpacing: 0.3 },
+  footer:      { color: '#94a3b8', fontSize: 12, textAlign: 'center' },
 })

@@ -2,372 +2,822 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, RefreshControl, Modal, ScrollView,
-  KeyboardAvoidingView, Platform,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 import {
-  getTickets, createTicket, updateTicket, deleteTicket,
-  getEmpresas, getTicketComentarios, createTicketComentario,
+  getTickets, createTicket, deleteTicket,
+  getEmpresas, getOperarios, getDispositivos,
 } from '../services/api'
 
-const ESTADOS     = ['abierto', 'en_curso', 'pendiente', 'cerrado']
-const PRIORIDADES = ['baja', 'media', 'alta', 'urgente']
-const ESTADO_COLOR = { abierto: '#16a34a', en_curso: '#d97706', pendiente: '#9333ea', cerrado: '#64748b' }
-const PRIO_COLOR   = { baja: '#16a34a', media: '#d97706', alta: '#dc2626', urgente: '#7f1d1d' }
+const ESTADOS = ['Pendiente', 'En curso', 'Completado', 'Pendiente de facturar', 'Facturado']
+const PRIORIDADES = ['Baja', 'Media', 'Alta', 'Urgente']
+const PAGE_SIZE = 25
+
+const AVATAR_COLORS = ['#0066ff', '#16a34a', '#d97706', '#dc2626', '#9333ea', '#0891b2', '#be185d', '#065f46']
+
+function getAvatarColor(str) {
+  if (!str) return AVATAR_COLORS[0]
+  let hash = 0
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
+
+function getInitials(nombre) {
+  if (!nombre) return '?'
+  return nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+}
 
 function formatFecha(iso) {
   if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
+  return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: '2-digit' })
 }
 
-export default function TicketsScreen() {
-  const { isAdmin } = useAuth()
-  const [tickets, setTickets]               = useState([])
-  const [loading, setLoading]               = useState(true)
-  const [refreshing, setRefreshing]         = useState(false)
-  const [search, setSearch]                 = useState('')
-  const [filtroEstado, setFiltroEstado]     = useState('')
-  const [selected, setSelected]             = useState(null)
-  const [comentarios, setComentarios]       = useState([])
-  const [nuevoComentario, setNuevoComentario] = useState('')
-  const [modalVisible, setModalVisible]     = useState(false)
-  const [showCreate, setShowCreate]         = useState(false)
-  const [empresas, setEmpresas]             = useState([])
-  const [form, setForm]                     = useState({ titulo: '', descripcion: '', prioridad: 'media', empresa_id: '' })
+function formatHoras(h) {
+  if (!h || h <= 0) return '0min'
+  if (h < 1) return `${Math.round(h * 60)}min`
+  if (h < 24) { const hrs = Math.floor(h); const min = Math.round((h - hrs) * 60); return min > 0 ? `${hrs}h ${min}min` : `${hrs}h` }
+  const dias = Math.floor(h / 24); return `${dias}d`
+}
 
-  const load = useCallback(async () => {
-    try {
-      const params = {}
-      if (filtroEstado) params.estado = filtroEstado
-      const data = await getTickets(params)
-      setTickets(Array.isArray(data) ? data : data.tickets || [])
-    } catch (e) { Alert.alert('Error', e.message) }
-    finally { setLoading(false); setRefreshing(false) }
-  }, [filtroEstado])
-
-  useEffect(() => { load() }, [load])
-  useEffect(() => { getEmpresas().then(setEmpresas).catch(() => {}) }, [])
-
-  async function openTicket(ticket) {
-    setSelected(ticket)
-    setModalVisible(true)
-    try {
-      const c = await getTicketComentarios(ticket.id)
-      setComentarios(Array.isArray(c) ? c : [])
-    } catch { setComentarios([]) }
+function PrioridadBadge({ p, colors }) {
+  const cfg = {
+    Urgente: { bg: colors.dangerBg,  txt: colors.danger },
+    Alta:    { bg: colors.warningBg, txt: colors.warning },
+    Media:   { bg: colors.infoBg,    txt: colors.info },
+    Baja:    { bg: colors.badgeGray, txt: colors.textMuted },
   }
-
-  async function handleComentario() {
-    if (!nuevoComentario.trim() || !selected) return
-    try {
-      await createTicketComentario(selected.id, nuevoComentario.trim())
-      setNuevoComentario('')
-      const c = await getTicketComentarios(selected.id)
-      setComentarios(Array.isArray(c) ? c : [])
-    } catch (e) { Alert.alert('Error', e.message) }
-  }
-
-  async function handleChangeEstado(estado) {
-    if (!selected) return
-    try {
-      await updateTicket(selected.id, { estado })
-      setSelected(s => ({ ...s, estado }))
-      load()
-    } catch (e) { Alert.alert('Error', e.message) }
-  }
-
-  async function handleCreate() {
-    if (!form.titulo.trim()) { Alert.alert('Error', 'Introduce un título'); return }
-    try {
-      await createTicket({ ...form, empresa_id: form.empresa_id || undefined })
-      setShowCreate(false)
-      setForm({ titulo: '', descripcion: '', prioridad: 'media', empresa_id: '' })
-      load()
-    } catch (e) { Alert.alert('Error', e.message) }
-  }
-
-  async function handleDelete(id) {
-    Alert.alert('Eliminar ticket', '¿Confirmar?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Eliminar', style: 'destructive', onPress: async () => {
-        try { await deleteTicket(id); setModalVisible(false); load() }
-        catch (e) { Alert.alert('Error', e.message) }
-      }},
-    ])
-  }
-
-  const filtered = tickets.filter(t =>
-    (t.titulo || '').toLowerCase().includes(search.toLowerCase()) ||
-    (t.empresa_nombre || '').toLowerCase().includes(search.toLowerCase())
+  const c = cfg[p] || cfg.Baja
+  return (
+    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: c.bg }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', color: c.txt }}>{p}</Text>
+    </View>
   )
+}
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.center}><ActivityIndicator size="large" color="#0047b3" /></View>
-      </SafeAreaView>
-    )
+function EstadoBadge({ e, colors }) {
+  const cfg = {
+    'Pendiente':             { bg: colors.warningBg,  txt: colors.warning },
+    'En curso':              { bg: colors.infoBg,     txt: colors.info },
+    'Completado':            { bg: colors.successBg,  txt: colors.success },
+    'Pendiente de facturar': { bg: colors.purpleBg,   txt: colors.purple },
+    'Facturado':             { bg: colors.cyanBg,     txt: colors.cyan },
+  }
+  const c = cfg[e] || { bg: colors.badgeGray, txt: colors.textMuted }
+  return (
+    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: c.bg }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', color: c.txt }}>{e}</Text>
+    </View>
+  )
+}
+
+// ─── Searchable single-select dropdown ────────────────────────────────────────
+function SearchableSelect({ label, placeholder, items, selectedId, onSelect, colors }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+
+  const selected = items.find(i => i.id === selectedId)
+  const filtered = query.trim()
+    ? items.filter(i => i.nombre?.toLowerCase().includes(query.trim().toLowerCase()))
+    : items
+
+  function handleSelect(item) {
+    onSelect(item.id)
+    setOpen(false)
+    setQuery('')
+  }
+
+  function handleOpen() {
+    setQuery('')
+    setOpen(true)
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Tickets</Text>
-        <TouchableOpacity onPress={() => setShowCreate(true)} style={styles.addBtn}>
-          <Ionicons name="add" size={18} color="#fff" />
-          <Text style={styles.addBtnText}>Nuevo</Text>
+    <View style={{ marginBottom: 14 }}>
+      {label ? (
+        <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>
+          {label}
+        </Text>
+      ) : null}
+
+      {/* Trigger button */}
+      <TouchableOpacity
+        onPress={handleOpen}
+        style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          backgroundColor: colors.inputBg, borderWidth: 1.5,
+          borderColor: selectedId ? colors.primary : colors.inputBorder,
+          borderRadius: 8, paddingHorizontal: 12, paddingVertical: 11,
+        }}
+      >
+        <Text style={{ fontSize: 14, color: selected ? colors.text : colors.textMuted, flex: 1 }} numberOfLines={1}>
+          {selected ? selected.nombre : placeholder || 'Seleccionar...'}
+        </Text>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
+      </TouchableOpacity>
+
+      {/* Inline dropdown modal */}
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => { setOpen(false); setQuery('') }}>
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', paddingHorizontal: 20 }}
+          activeOpacity={1}
+          onPress={() => { setOpen(false); setQuery('') }}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={{ backgroundColor: colors.card, borderRadius: 14, overflow: 'hidden', maxHeight: 400 }}>
+              {/* Search bar */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+                <TextInput
+                  style={{ flex: 1, fontSize: 14, color: colors.text }}
+                  placeholder="Buscar empresa..."
+                  placeholderTextColor={colors.textMuted}
+                  value={query}
+                  onChangeText={setQuery}
+                  autoFocus
+                />
+                {query ? (
+                  <TouchableOpacity onPress={() => setQuery('')}>
+                    <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              {/* List */}
+              <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 320 }}>
+                {filtered.length === 0 ? (
+                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                    <Text style={{ color: colors.textMuted, fontSize: 13 }}>Sin resultados</Text>
+                  </View>
+                ) : (
+                  filtered.map((item, idx) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => handleSelect(item)}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                        paddingHorizontal: 16, paddingVertical: 13,
+                        borderBottomWidth: idx < filtered.length - 1 ? 1 : 0,
+                        borderBottomColor: colors.border,
+                        backgroundColor: item.id === selectedId ? colors.primaryBg : 'transparent',
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, color: item.id === selectedId ? colors.primary : colors.text, fontWeight: item.id === selectedId ? '700' : '400', flex: 1 }} numberOfLines={1}>
+                        {item.nombre}
+                      </Text>
+                      {item.id === selectedId && (
+                        <Ionicons name="checkmark" size={16} color={colors.primary} />
+                      )}
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
         </TouchableOpacity>
-      </View>
-
-      <View style={styles.filters}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Buscar ticket o empresa..."
-          placeholderTextColor="#64748b"
-          value={search}
-          onChangeText={setSearch}
-        />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-          <TouchableOpacity
-            style={[styles.filterBtn, !filtroEstado && styles.filterBtnActive]}
-            onPress={() => setFiltroEstado('')}
-          >
-            <Text style={[styles.filterBtnText, !filtroEstado && styles.filterBtnTextActive]}>Todos</Text>
-          </TouchableOpacity>
-          {ESTADOS.map(e => (
-            <TouchableOpacity
-              key={e}
-              style={[styles.filterBtn, filtroEstado === e && { backgroundColor: ESTADO_COLOR[e] }]}
-              onPress={() => setFiltroEstado(e)}
-            >
-              <Text style={[styles.filterBtnText, filtroEstado === e && styles.filterBtnTextActive]}>
-                {e.replace('_', ' ')}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <FlatList
-        data={filtered}
-        keyExtractor={item => String(item.id)}
-        contentContainerStyle={{ padding: 12, paddingTop: 4 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); load() }}
-            tintColor="#0047b3"
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="ticket-outline" size={48} color="#334155" />
-            <Text style={styles.empty}>Sin tickets</Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.ticketCard} onPress={() => openTicket(item)}>
-            <View style={[styles.prioBar, { backgroundColor: PRIO_COLOR[item.prioridad] || '#64748b' }]} />
-            <View style={styles.ticketContent}>
-              <View style={styles.ticketTop}>
-                <Text style={styles.ticketTitulo} numberOfLines={1}>{item.titulo}</Text>
-                <View style={[styles.badge, { backgroundColor: ESTADO_COLOR[item.estado] || '#64748b' }]}>
-                  <Text style={styles.badgeText}>{item.estado?.replace('_', ' ')}</Text>
-                </View>
-              </View>
-              <View style={styles.ticketBottom}>
-                <Text style={styles.ticketEmpresa}>{item.empresa_nombre || '—'}</Text>
-                <Text style={styles.ticketFecha}>{formatFecha(item.created_at)}</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        )}
-      />
-
-      {/* Modal detalle */}
-      <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
-        <SafeAreaView style={styles.safe}>
-          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.iconBtn}>
-                <Ionicons name="arrow-back" size={22} color="#fff" />
-              </TouchableOpacity>
-              <Text style={styles.modalTitle} numberOfLines={1}>{selected?.titulo}</Text>
-              {isAdmin() && (
-                <TouchableOpacity onPress={() => handleDelete(selected?.id)} style={styles.iconBtn}>
-                  <Ionicons name="trash-outline" size={20} color="#dc2626" />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
-              <View style={styles.badgeRow}>
-                <View style={[styles.badge, { backgroundColor: PRIO_COLOR[selected?.prioridad] || '#64748b' }]}>
-                  <Text style={styles.badgeText}>{selected?.prioridad}</Text>
-                </View>
-                <View style={[styles.badge, { backgroundColor: ESTADO_COLOR[selected?.estado] || '#64748b' }]}>
-                  <Text style={styles.badgeText}>{selected?.estado?.replace('_', ' ')}</Text>
-                </View>
-              </View>
-
-              <Text style={styles.descripcion}>{selected?.descripcion || 'Sin descripción'}</Text>
-
-              {isAdmin() && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Cambiar estado</Text>
-                  <View style={styles.chipRow}>
-                    {ESTADOS.map(e => (
-                      <TouchableOpacity
-                        key={e}
-                        style={[styles.chip, selected?.estado === e && { backgroundColor: ESTADO_COLOR[e] }]}
-                        onPress={() => handleChangeEstado(e)}
-                      >
-                        <Text style={styles.chipText}>{e.replace('_', ' ')}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Comentarios ({comentarios.length})</Text>
-                {comentarios.map(c => (
-                  <View key={c.id} style={styles.comentario}>
-                    <Text style={styles.comentarioAutor}>{c.autor_nombre || c.autor_email}</Text>
-                    <Text style={styles.comentarioTexto}>{c.contenido}</Text>
-                    <Text style={styles.comentarioFecha}>{formatFecha(c.created_at)}</Text>
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
-
-            <View style={styles.commentInput}>
-              <TextInput
-                style={styles.commentTextInput}
-                placeholder="Añadir comentario..."
-                placeholderTextColor="#64748b"
-                value={nuevoComentario}
-                onChangeText={setNuevoComentario}
-                multiline
-              />
-              <TouchableOpacity onPress={handleComentario} style={styles.sendBtn}>
-                <Ionicons name="send" size={18} color="#fff" />
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
       </Modal>
-
-      {/* Modal crear ticket */}
-      <Modal visible={showCreate} animationType="slide" onRequestClose={() => setShowCreate(false)}>
-        <SafeAreaView style={styles.safe}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowCreate(false)} style={styles.iconBtn}>
-              <Ionicons name="close" size={22} color="#fff" />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Nuevo Ticket</Text>
-            <TouchableOpacity onPress={handleCreate} style={styles.saveBtn}>
-              <Text style={styles.saveBtnText}>Crear</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
-            <Text style={styles.fieldLabel}>Título *</Text>
-            <TextInput
-              style={styles.fieldInput}
-              placeholder="Título del ticket"
-              placeholderTextColor="#64748b"
-              value={form.titulo}
-              onChangeText={v => setForm(f => ({ ...f, titulo: v }))}
-            />
-            <Text style={styles.fieldLabel}>Descripción</Text>
-            <TextInput
-              style={[styles.fieldInput, { height: 100, textAlignVertical: 'top' }]}
-              placeholder="Describe el problema..."
-              placeholderTextColor="#64748b"
-              value={form.descripcion}
-              onChangeText={v => setForm(f => ({ ...f, descripcion: v }))}
-              multiline
-            />
-            <Text style={styles.fieldLabel}>Prioridad</Text>
-            <View style={styles.chipRow}>
-              {PRIORIDADES.map(p => (
-                <TouchableOpacity
-                  key={p}
-                  style={[styles.chip, form.prioridad === p && { backgroundColor: PRIO_COLOR[p] }]}
-                  onPress={() => setForm(f => ({ ...f, prioridad: p }))}
-                >
-                  <Text style={styles.chipText}>{p}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.fieldLabel}>Empresa</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {empresas.map(e => (
-                <TouchableOpacity
-                  key={e.id}
-                  style={[styles.chip, String(form.empresa_id) === String(e.id) && styles.chipActive]}
-                  onPress={() => setForm(f => ({ ...f, empresa_id: e.id }))}
-                >
-                  <Text style={styles.chipText}>{e.nombre}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-    </SafeAreaView>
+    </View>
   )
 }
 
-const styles = StyleSheet.create({
-  safe:                { flex: 1, backgroundColor: '#0f172a' },
-  center:              { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header:              { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#1e293b', borderBottomWidth: 1, borderBottomColor: '#334155' },
-  title:               { color: '#fff', fontSize: 18, fontWeight: '700' },
-  addBtn:              { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#0047b3', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
-  addBtnText:          { color: '#fff', fontWeight: '600', fontSize: 13 },
-  filters:             { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 4 },
-  searchInput:         { backgroundColor: '#1e293b', color: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#334155', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
-  filterRow:           { marginTop: 8, marginBottom: 4 },
-  filterBtn:           { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: '#1e293b', marginRight: 6 },
-  filterBtnActive:     { backgroundColor: '#0047b3' },
-  filterBtnText:       { color: '#94a3b8', fontSize: 12 },
-  filterBtnTextActive: { color: '#fff' },
-  emptyContainer:      { alignItems: 'center', marginTop: 60, gap: 8 },
-  empty:               { color: '#64748b', fontSize: 14 },
-  ticketCard:          { flexDirection: 'row', backgroundColor: '#1e293b', borderRadius: 10, marginBottom: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#334155' },
-  prioBar:             { width: 4 },
-  ticketContent:       { flex: 1, padding: 13 },
-  ticketTop:           { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6, gap: 8 },
-  ticketTitulo:        { color: '#fff', fontWeight: '600', fontSize: 14, flex: 1 },
-  ticketBottom:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  ticketEmpresa:       { color: '#64748b', fontSize: 12 },
-  ticketFecha:         { color: '#475569', fontSize: 11 },
-  badge:               { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
-  badgeText:           { color: '#fff', fontSize: 11, fontWeight: '600' },
-  modalHeader:         { flexDirection: 'row', alignItems: 'center', padding: 14, backgroundColor: '#1e293b', borderBottomWidth: 1, borderBottomColor: '#334155' },
-  iconBtn:             { padding: 4 },
-  modalTitle:          { color: '#fff', fontWeight: '700', fontSize: 16, flex: 1, marginHorizontal: 10 },
-  saveBtn:             { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#0047b3', borderRadius: 8 },
-  saveBtnText:         { color: '#fff', fontWeight: '700', fontSize: 14 },
-  modalBody:           { flex: 1, padding: 16 },
-  badgeRow:            { flexDirection: 'row', gap: 6, marginBottom: 14, flexWrap: 'wrap' },
-  descripcion:         { color: '#94a3b8', fontSize: 14, lineHeight: 22, marginBottom: 20 },
-  section:             { marginBottom: 20 },
-  sectionTitle:        { color: '#94a3b8', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 },
-  chipRow:             { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip:                { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: '#1e293b' },
-  chipActive:          { backgroundColor: '#0047b3' },
-  chipText:            { color: '#cbd5e1', fontSize: 12 },
-  comentario:          { backgroundColor: '#1e293b', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#334155' },
-  comentarioAutor:     { color: '#0047b3', fontSize: 12, fontWeight: '600', marginBottom: 4 },
-  comentarioTexto:     { color: '#e2e8f0', fontSize: 14, lineHeight: 20 },
-  comentarioFecha:     { color: '#475569', fontSize: 11, marginTop: 4 },
-  commentInput:        { flexDirection: 'row', padding: 12, backgroundColor: '#1e293b', borderTopWidth: 1, borderTopColor: '#334155', gap: 8, alignItems: 'flex-end' },
-  commentTextInput:    { flex: 1, backgroundColor: '#0f172a', color: '#fff', borderRadius: 20, borderWidth: 1, borderColor: '#334155', paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, maxHeight: 100 },
-  sendBtn:             { width: 40, height: 40, borderRadius: 20, backgroundColor: '#0047b3', justifyContent: 'center', alignItems: 'center' },
-  fieldLabel:          { color: '#94a3b8', fontSize: 13, marginBottom: 6, marginTop: 16, fontWeight: '500' },
-  fieldInput:          { backgroundColor: '#1e293b', color: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#334155', paddingHorizontal: 12, paddingVertical: 11, fontSize: 14 },
-})
+// ─── Searchable multi-select for operarios ────────────────────────────────────
+function SearchableMultiSelect({ label, placeholder, items, selectedIds, onToggle, colors }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+
+  const filtered = query.trim()
+    ? items.filter(i => i.nombre?.toLowerCase().includes(query.trim().toLowerCase()))
+    : items
+
+  const selectedItems = items.filter(i => selectedIds.includes(i.id))
+
+  function handleOpen() {
+    setQuery('')
+    setOpen(true)
+  }
+
+  return (
+    <View style={{ marginBottom: 14 }}>
+      {label ? (
+        <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>
+          {label}
+        </Text>
+      ) : null}
+
+      {/* Trigger button */}
+      <TouchableOpacity
+        onPress={handleOpen}
+        style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          backgroundColor: colors.inputBg, borderWidth: 1.5,
+          borderColor: selectedIds.length > 0 ? colors.primary : colors.inputBorder,
+          borderRadius: 8, paddingHorizontal: 12, paddingVertical: 11,
+        }}
+      >
+        <Text style={{ fontSize: 14, color: selectedIds.length > 0 ? colors.text : colors.textMuted, flex: 1 }}>
+          {selectedIds.length > 0 ? `${selectedIds.length} operario${selectedIds.length !== 1 ? 's' : ''} seleccionado${selectedIds.length !== 1 ? 's' : ''}` : (placeholder || 'Seleccionar operarios...')}
+        </Text>
+        <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+      </TouchableOpacity>
+
+      {/* Selected chips */}
+      {selectedItems.length > 0 && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          {selectedItems.map(op => (
+            <View
+              key={op.id}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16, backgroundColor: colors.primaryBg, borderWidth: 1, borderColor: colors.primary }}
+            >
+              <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: getAvatarColor(op.id), alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 8, color: '#fff', fontWeight: '700' }}>{getInitials(op.nombre)}</Text>
+              </View>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>{op.nombre?.split(' ')[0]}</Text>
+              <TouchableOpacity onPress={() => onToggle(op.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Ionicons name="close-circle" size={14} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Dropdown modal */}
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => { setOpen(false); setQuery('') }}>
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', paddingHorizontal: 20 }}
+          activeOpacity={1}
+          onPress={() => { setOpen(false); setQuery('') }}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={{ backgroundColor: colors.card, borderRadius: 14, overflow: 'hidden', maxHeight: 420 }}>
+              {/* Header */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Seleccionar operarios</Text>
+                <TouchableOpacity onPress={() => { setOpen(false); setQuery('') }}>
+                  <Ionicons name="close" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+              {/* Search */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+                <TextInput
+                  style={{ flex: 1, fontSize: 14, color: colors.text }}
+                  placeholder="Buscar operario..."
+                  placeholderTextColor={colors.textMuted}
+                  value={query}
+                  onChangeText={setQuery}
+                  autoFocus
+                />
+                {query ? (
+                  <TouchableOpacity onPress={() => setQuery('')}>
+                    <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              {/* List */}
+              <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 320 }}>
+                {filtered.length === 0 ? (
+                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                    <Text style={{ color: colors.textMuted, fontSize: 13 }}>Sin resultados</Text>
+                  </View>
+                ) : (
+                  filtered.map((item, idx) => {
+                    const sel = selectedIds.includes(item.id)
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        onPress={() => onToggle(item.id)}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 10,
+                          paddingHorizontal: 16, paddingVertical: 12,
+                          borderBottomWidth: idx < filtered.length - 1 ? 1 : 0,
+                          borderBottomColor: colors.border,
+                          backgroundColor: sel ? colors.primaryBg : 'transparent',
+                        }}
+                      >
+                        <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: getAvatarColor(item.id), alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ fontSize: 11, color: '#fff', fontWeight: '700' }}>{getInitials(item.nombre)}</Text>
+                        </View>
+                        <Text style={{ flex: 1, fontSize: 14, color: sel ? colors.primary : colors.text, fontWeight: sel ? '700' : '400' }} numberOfLines={1}>
+                          {item.nombre}
+                        </Text>
+                        {sel && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
+                      </TouchableOpacity>
+                    )
+                  })
+                )}
+              </ScrollView>
+              {/* Done button */}
+              <TouchableOpacity
+                onPress={() => { setOpen(false); setQuery('') }}
+                style={{ margin: 12, paddingVertical: 12, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
+                  {selectedIds.length > 0 ? `Confirmar (${selectedIds.length})` : 'Cerrar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  )
+}
+
+// ─── NuevoTicketModal ─────────────────────────────────────────────────────────
+function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, colors }) {
+  const [form, setForm] = useState({
+    empresa_id: '', asunto: '', descripcion: '',
+    prioridad: 'Media', estado: 'Pendiente',
+    contacto_nombre: null, telefono_cliente: null,
+  })
+  const [selOperarios, setSelOperarios] = useState([])
+  const [selDispositivos, setSelDispositivos] = useState([])
+  const [dispositivos, setDispositivos] = useState([])
+
+  useEffect(() => {
+    if (visible) {
+      setForm({ empresa_id: '', asunto: '', descripcion: '', prioridad: 'Media', estado: 'Pendiente', contacto_nombre: null, telefono_cliente: null })
+      setSelOperarios([])
+      setSelDispositivos([])
+      setDispositivos([])
+    }
+  }, [visible])
+
+  useEffect(() => {
+    setForm(f => ({ ...f, contacto_nombre: null, telefono_cliente: null }))
+    setSelDispositivos([])
+    if (form.empresa_id) {
+      getDispositivos(form.empresa_id).then(data => setDispositivos((data || []).filter(d => d.categoria !== 'correo'))).catch(() => setDispositivos([]))
+    } else {
+      setDispositivos([])
+    }
+  }, [form.empresa_id])
+
+  function toggleDispositivo(id) {
+    setSelDispositivos(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function toggleOperario(id) {
+    setSelOperarios(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function handleSave() {
+    if (!form.empresa_id) { Alert.alert('Error', 'Selecciona una empresa'); return }
+    if (!form.asunto.trim()) { Alert.alert('Error', 'El asunto es obligatorio'); return }
+    onSave({ ...form, operarios: selOperarios, dispositivos_ids: selDispositivos })
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: colors.overlay }}>
+        <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '92%', paddingBottom: 24 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>Nuevo ticket</Text>
+            <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+            {/* Empresa — searchable select */}
+            <SearchableSelect
+              label="Empresa *"
+              placeholder="Seleccionar empresa..."
+              items={empresas}
+              selectedId={form.empresa_id}
+              onSelect={id => setForm(f => ({ ...f, empresa_id: id }))}
+              colors={colors}
+            />
+
+            {/* Contacto de empresa */}
+            {form.empresa_id && (() => {
+              const emp = empresas.find(e => e.id === form.empresa_id)
+              const cts = (emp?.contactos || []).filter(c => c.nombre?.trim())
+              if (!cts.length) return null
+              return (
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Contacto</Text>
+                  <View style={{ gap: 6 }}>
+                    <TouchableOpacity
+                      onPress={() => setForm(f => ({ ...f, contacto_nombre: null, telefono_cliente: null }))}
+                      style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 8, borderWidth: 1.5, borderColor: !form.contacto_nombre ? colors.primary : colors.border, backgroundColor: !form.contacto_nombre ? colors.primaryBg : colors.bg }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: !form.contacto_nombre ? colors.primary : colors.textMuted }}>Sin contacto</Text>
+                    </TouchableOpacity>
+                    {cts.map((c, i) => {
+                      const sel = form.contacto_nombre === c.nombre
+                      return (
+                        <TouchableOpacity
+                          key={i}
+                          onPress={() => setForm(f => ({ ...f, contacto_nombre: c.nombre, telefono_cliente: c.telefono || null }))}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primaryBg : colors.bg }}
+                        >
+                          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: sel ? colors.primary : colors.badgeGray, alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#fff' : colors.textMuted }}>
+                              {(c.nombre || '?').charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: sel ? colors.primary : colors.text }}>{c.nombre}</Text>
+                            {c.cargo ? <Text style={{ fontSize: 11, color: colors.textMuted }}>{c.cargo}</Text> : null}
+                          </View>
+                          {c.telefono ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Ionicons name="call-outline" size={12} color={sel ? colors.primary : colors.textMuted} />
+                              <Text style={{ fontSize: 12, color: sel ? colors.primary : colors.textMuted }}>{c.telefono}</Text>
+                            </View>
+                          ) : null}
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                </View>
+              )
+            })()}
+
+            {/* Dispositivos — checklist */}
+            {dispositivos.length > 0 && (
+              <View style={{ marginBottom: 14 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Equipos</Text>
+                <View style={{ gap: 6 }}>
+                  {dispositivos.map(d => {
+                    const sel = selDispositivos.includes(d.id)
+                    return (
+                      <TouchableOpacity
+                        key={d.id}
+                        onPress={() => toggleDispositivo(d.id)}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primaryBg : colors.bg }}
+                      >
+                        <View style={{ width: 18, height: 18, borderRadius: 4, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                          {sel && <Ionicons name="checkmark" size={12} color="#fff" />}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: sel ? colors.primary : colors.text }}>{d.nombre}</Text>
+                          {d.tipo ? <Text style={{ fontSize: 11, color: colors.textMuted }}>{d.tipo}</Text> : null}
+                        </View>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* Asunto */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Asunto *</Text>
+              <TextInput
+                style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
+                value={form.asunto}
+                onChangeText={v => setForm(f => ({ ...f, asunto: v }))}
+                placeholder="Describe el problema..."
+                placeholderTextColor={colors.textMuted}
+              />
+            </View>
+
+            {/* Descripcion */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Descripción</Text>
+              <TextInput
+                style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text, height: 80, textAlignVertical: 'top', paddingTop: 10 }}
+                value={form.descripcion}
+                onChangeText={v => setForm(f => ({ ...f, descripcion: v }))}
+                placeholder="Detalles adicionales..."
+                placeholderTextColor={colors.textMuted}
+                multiline
+              />
+            </View>
+
+            {/* Prioridad */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Prioridad</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {PRIORIDADES.map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    style={{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8, borderWidth: 1.5, borderColor: form.prioridad === p ? colors.primary : colors.border, backgroundColor: form.prioridad === p ? colors.primaryBg : colors.bg }}
+                    onPress={() => setForm(f => ({ ...f, prioridad: p }))}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: form.prioridad === p ? colors.primary : colors.textMuted }}>{p}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Estado */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Estado</Text>
+              <View style={{ gap: 6 }}>
+                {ESTADOS.map(e => (
+                  <TouchableOpacity
+                    key={e}
+                    style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 8, borderWidth: 1.5, borderColor: form.estado === e ? colors.primary : colors.border, backgroundColor: form.estado === e ? colors.primaryBg : colors.bg }}
+                    onPress={() => setForm(f => ({ ...f, estado: e }))}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: form.estado === e ? colors.primary : colors.text }}>{e}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Operarios — searchable multi-select */}
+            {operarios.length > 0 && (
+              <SearchableMultiSelect
+                label="Operarios asignados"
+                placeholder="Seleccionar operarios..."
+                items={operarios}
+                selectedIds={selOperarios}
+                onToggle={toggleOperario}
+                colors={colors}
+              />
+            )}
+          </ScrollView>
+
+          <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <TouchableOpacity style={{ flex: 1, paddingVertical: 13, alignItems: 'center', borderRadius: 8, borderWidth: 1.5, borderColor: colors.border }} onPress={onClose}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textMuted }}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ flex: 2, paddingVertical: 13, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary }} onPress={handleSave}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#ffffff' }}>Crear ticket</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  )
+}
+
+function TicketCard({ ticket, onPress, onDelete, colors }) {
+  return (
+    <TouchableOpacity
+      style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, marginBottom: 10 }}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+        <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.primaryBg, minWidth: 44, alignItems: 'center' }}>
+          <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary }}>#{ticket.numero || ticket.id?.toString().slice(-4)}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 4 }} numberOfLines={2}>{ticket.asunto}</Text>
+          <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 6 }} numberOfLines={1}>
+            {ticket.empresas?.nombre || 'Sin empresa'}
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            <PrioridadBadge p={ticket.prioridad} colors={colors} />
+            <EstadoBadge e={ticket.estado} colors={colors} />
+            {ticket.horas_totales > 0 && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <Ionicons name="time-outline" size={11} color={colors.textMuted} />
+                <Text style={{ fontSize: 10, color: colors.textMuted }}>{formatHoras(ticket.horas_totales)}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+        <View style={{ alignItems: 'flex-end', gap: 6 }}>
+          <Text style={{ fontSize: 11, color: colors.textMuted }}>{formatFecha(ticket.created_at)}</Text>
+          {ticket.ticket_asignaciones?.length > 0 && (
+            <View style={{ flexDirection: 'row' }}>
+              {ticket.ticket_asignaciones.slice(0, 3).map((a, i) => (
+                <View
+                  key={a.user_id || i}
+                  style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: getAvatarColor(a.user_id), borderWidth: 2, borderColor: colors.card, marginLeft: i > 0 ? -6 : 0, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Text style={{ fontSize: 8, color: '#fff', fontWeight: '700' }}>{getInitials(a.profiles?.nombre)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          <TouchableOpacity onPress={() => onDelete(ticket)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+            <Ionicons name="trash-outline" size={14} color={colors.danger} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </TouchableOpacity>
+  )
+}
+
+export default function TicketsScreen({ navigation }) {
+  const { user, logout } = useAuth()
+  const { colors, isDark, toggleTheme } = useTheme()
+
+  const [tickets, setTickets]     = useState([])
+  const [empresas, setEmpresas]   = useState([])
+  const [operarios, setOperarios] = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [search, setSearch]       = useState('')
+  const [filterEstado, setFilterEstado]     = useState('')
+  const [filterPrioridad, setFilterPrioridad] = useState('')
+  const [showFilters, setShowFilters]       = useState(false)
+  const [showModal, setShowModal] = useState(false)
+  const [page, setPage]           = useState(1)
+
+  const load = useCallback(async () => {
+    try {
+      const [t, e, o] = await Promise.all([getTickets(), getEmpresas(), getOperarios()])
+      setTickets(Array.isArray(t?.tickets) ? t.tickets : Array.isArray(t) ? t : [])
+      setEmpresas(Array.isArray(e) ? e : [])
+      setOperarios(Array.isArray(o) ? o : [])
+    } catch (e) { Alert.alert('Error', e.message) }
+  }, [])
+
+  useEffect(() => {
+    load().finally(() => setLoading(false))
+  }, [])
+
+  async function onRefresh() {
+    setRefreshing(true)
+    await load()
+    setRefreshing(false)
+  }
+
+  const filtered = tickets.filter(t => {
+    if (search && !t.asunto?.toLowerCase().includes(search.toLowerCase()) &&
+        !t.empresas?.nombre?.toLowerCase().includes(search.toLowerCase()) &&
+        !String(t.numero || '').includes(search)) return false
+    if (filterEstado && t.estado !== filterEstado) return false
+    if (filterPrioridad && t.prioridad !== filterPrioridad) return false
+    return true
+  })
+
+  // Reset page when search/filters change
+  useEffect(() => {
+    setPage(1)
+  }, [search, filterEstado, filterPrioridad])
+
+  const pagedData = filtered.slice(0, page * PAGE_SIZE)
+  const hasMore = filtered.length > pagedData.length
+
+  const total        = tickets.length
+  const pendientes   = tickets.filter(t => t.estado === 'Pendiente').length
+  const enCurso      = tickets.filter(t => t.estado === 'En curso').length
+  const completados  = tickets.filter(t => t.estado === 'Completado').length
+  const pendFact     = tickets.filter(t => t.estado === 'Pendiente de facturar').length
+  const facturados   = tickets.filter(t => t.estado === 'Facturado').length
+  const urgentes     = tickets.filter(t => t.prioridad === 'Urgente').length
+
+  async function handleCreate(form) {
+    try {
+      await createTicket(form)
+      setShowModal(false)
+      await load()
+    } catch (e) { Alert.alert('Error', e.message) }
+  }
+
+  function handleDelete(ticket) {
+    Alert.alert('Eliminar ticket', `¿Eliminar ticket #${ticket.numero || ticket.id}?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar', style: 'destructive',
+        onPress: async () => {
+          try { await deleteTicket(ticket.id); await load() }
+          catch (e) { Alert.alert('Error', e.message) }
+        },
+      },
+    ])
+  }
+
+  if (loading) {
+    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}><ActivityIndicator size="large" color={colors.primary} /></View>
+  }
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.headerBg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View>
+          <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text }}>Tickets</Text>
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>{total} ticket{total !== 1 ? 's' : ''}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: getAvatarColor(user?.id), alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{getInitials(user?.nombre || user?.email)}</Text>
+          </View>
+          <Text style={{ fontSize: 12, color: colors.textMuted, maxWidth: 100 }} numberOfLines={1}>{(user?.nombre || user?.email || '').substring(0, 14)}</Text>
+          <TouchableOpacity onPress={toggleTheme} style={{ padding: 6 }}>
+            <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => Alert.alert('Cerrar sesión', '¿Cerrar sesión?', [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Salir', style: 'destructive', onPress: logout },
+            ])}
+            style={{ padding: 6 }}
+          >
+            <Ionicons name="log-out-outline" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Search + filter */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 8, gap: 8, marginTop: 8 }}>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 9 }}>
+            <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+            <TextInput
+              style={{ flex: 1, fontSize: 14, color: colors.text }}
+              placeholder="Buscar tickets..."
+              placeholderTextColor={colors.textMuted}
+              value={search}
+              onChangeText={setSearch}
+            />
+            {search ? <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={16} color={colors.textMuted} /></TouchableOpacity> : null}
+          </View>
+          <TouchableOpacity
+            style={[{ padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }, (filterEstado || filterPrioridad) && { borderColor: colors.primary, backgroundColor: colors.primaryBg }]}
+            onPress={() => setShowFilters(v => !v)}
+          >
+            <Ionicons name="filter-outline" size={18} color={(filterEstado || filterPrioridad) ? colors.primary : colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+
+        {showFilters && (
+          <View style={{ gap: 8 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TouchableOpacity
+                  style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1.5, borderColor: !filterEstado ? colors.primary : colors.border, backgroundColor: !filterEstado ? colors.primaryBg : colors.card }}
+                  onPress={() => setFilterEstado('')}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: !filterEstado ? colors.primary : colors.textMuted }}>Todos</Text>
+                </TouchableOpacity>
+                {ESTADOS.map(e => (
+                  <TouchableOpacity
+                    key={e}
+                    style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1.5, borderColor: filterEstado === e ? colors.primary : colors.border, backgroundColor: filterEstado === e ? colors.primaryBg : colors.card }}
+                    onPress={() => setFilterEstado(filterEstado === e ? '' : e)}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: filterEstado === e ? colors.primary : colors.textMuted }}>{e}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {PRIORIDADES.map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1.5, borderColor: filterPrioridad === p ? colors.primary : colors.border, backgroundColor: filterPrioridad === p ? colors.primaryBg : colors.card }}
+                    onPress={() => setFilterPrioridad(filterPrioridad === p ? '' : p)}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: filterPrioridad === p ? colors.primary : colors.textMuted }}>{p}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        )}
+      </View>
+
+      {/* List */}
+      <FlatList
+        data={pagedData}
+        keyExtractor={item => String(item.id)}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        renderItem={({ item }) => (
+          <TicketCard
+            ticket={item}
+            colors={colors}
+            onPress={() => navigation.navigate('TicketDetalle', { ticket: item })}
+            onDelete={handleDelete}
+          />
+        )}
+        ListEmptyComponent={
+          <View style={{ alignItems: 'center', paddingTop: 60, gap: 12 }}>
+            <Ionicons name="headset-outline" size={48} color={colors.textMuted} />
+            <Text style={{ color: colors.textMuted, fontSize: 15 }}>Sin tickets</Text>
+          </View>
+        }
+        ListFooterComponent={
+          hasMore ? (
+            <TouchableOpacity
+              onPress={() => setPage(p => p + 1)}
+              style={{ marginTop: 4, marginBottom: 8, paddingVertical: 13, alignItems: 'center', borderRadius: 10, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.card }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
+                Cargar más ({filtered.length} total)
+              </Text>
+            </TouchableOpacity>
+          ) : null
+        }
+      />
+
+      <NuevoTicketModal
+        visible={showModal}
+        empresas={empresas}
+        operarios={operarios}
+        onClose={() => setShowModal(false)}
+        onSave={handleCreate}
+        colors={colors}
+      />
+
+      {/* FAB */}
+      <TouchableOpacity
+        style={{ position: 'absolute', bottom: 24, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 }}
+        onPress={() => setShowModal(true)}
+      >
+        <Ionicons name="add" size={28} color="#fff" />
+      </TouchableOpacity>
+    </SafeAreaView>
+  )
+}
