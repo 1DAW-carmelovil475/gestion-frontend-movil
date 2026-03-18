@@ -25,13 +25,15 @@ function formatFecha(iso) {
   return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-const ROLES = ['trabajador', 'gestor', 'admin', 'cliente']
+const ROLES = ['trabajador', 'gestor', 'desarrollador', 'admin', 'cliente']
 const ROL_CONFIG = {
-  admin:     { label: 'Admin',      bg: '#fee2e2', txt: '#dc2626' },
-  gestor:    { label: 'Gestor',     bg: '#fef3c7', txt: '#d97706' },
-  trabajador:{ label: 'Trabajador', bg: '#dbeafe', txt: '#0047b3' },
-  cliente:   { label: 'Cliente',    bg: '#dcfce7', txt: '#16a34a' },
+  admin:        { label: 'Admin',        bg: '#fee2e2', txt: '#dc2626' },
+  gestor:       { label: 'Gestor',       bg: '#fef3c7', txt: '#d97706' },
+  desarrollador:{ label: 'Desarrollador',bg: '#e0e7ff', txt: '#4338ca' },
+  trabajador:   { label: 'Trabajador',   bg: '#dbeafe', txt: '#0047b3' },
+  cliente:      { label: 'Cliente',      bg: '#dcfce7', txt: '#16a34a' },
 }
+const ROL_ORDER = { admin: 0, gestor: 1, desarrollador: 2, trabajador: 3, cliente: 4 }
 
 function SearchableSelect({ label, placeholder, items, selectedId, onSelect, colors }) {
   const [open, setOpen] = useState(false)
@@ -346,13 +348,14 @@ export default function UsuariosScreen() {
     if (filterActivo === 'activo' && u.activo === false) return false
     if (filterActivo === 'inactivo' && u.activo !== false) return false
     return true
-  })
+  }).sort((a, b) => (ROL_ORDER[a.rol] ?? 99) - (ROL_ORDER[b.rol] ?? 99))
 
   const paginated = filtered.slice(0, page * PAGE_SIZE)
 
   const total    = usuarios.length
   const admins   = usuarios.filter(u => u.rol === 'admin').length
   const gestores = usuarios.filter(u => u.rol === 'gestor').length
+  const devs     = usuarios.filter(u => u.rol === 'desarrollador').length
   const trabaj   = usuarios.filter(u => u.rol === 'trabajador').length
   const clientes = usuarios.filter(u => u.rol === 'cliente').length
   const activos  = usuarios.filter(u => u.activo !== false).length

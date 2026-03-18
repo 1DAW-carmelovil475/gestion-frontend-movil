@@ -139,10 +139,12 @@ export const deleteUsuario         = (id)       => apiFetch(`/api/usuarios/${id}
 export const getIncidenciasCliente = ()         => apiFetch('/api/v2/tickets')
 export const createIncidencia      = (d)        => apiFetch('/api/v2/tickets/incidencia', { method: 'POST', body: JSON.stringify(d) })
 
-export async function createIncidenciaConArchivos(asunto, descripcion, archivos = []) {
+export async function createIncidenciaConArchivos(asunto, descripcion, archivos = [], sistemaCat = null, sistemaNombre = null) {
   const form = new FormData()
   form.append('asunto', asunto)
   if (descripcion) form.append('descripcion', descripcion)
+  if (sistemaCat)    form.append('sistema_categoria', sistemaCat)
+  if (sistemaNombre) form.append('sistema_nombre',    sistemaNombre)
   for (const file of archivos) {
     form.append('archivos', { uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' })
   }

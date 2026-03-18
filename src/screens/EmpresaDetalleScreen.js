@@ -18,6 +18,7 @@ const TIPO_SUGERENCIAS = {
   red:      ['Router', 'Switch', 'Access Point', 'Firewall', 'Modem'],
   correo:   ['Exchange', 'Gmail', 'Outlook', 'IMAP'],
   otro:     [],
+  web:      ['Web corporativa', 'Tienda online', 'Portal', 'Aplicación web'],
 }
 
 const CATEGORIAS = [
@@ -25,6 +26,7 @@ const CATEGORIAS = [
   { key: 'servidor', label: 'Servidores', icon: 'server-outline' },
   { key: 'nas',      label: 'NAS',        icon: 'save-outline' },
   { key: 'red',      label: 'Redes',      icon: 'git-network-outline' },
+  { key: 'web',      label: 'Web',        icon: 'globe-outline' },
   { key: 'correo',   label: 'Correos',    icon: 'mail-outline' },
   { key: 'otro',     label: 'Otros',      icon: 'cube-outline' },
 ]
@@ -54,6 +56,9 @@ const CAMPOS_CAT = {
     { key: 'ip',       label: 'IP' },
     { key: 'usuario',  label: 'Usuario' },
     { key: 'password', label: 'Contraseña', secret: true },
+  ],
+  web: [
+    { key: 'url',      label: 'URL' },
   ],
   correo: [
     { key: 'tipo',     label: 'Servidor' },
@@ -197,6 +202,13 @@ function DispositivoModal({ visible, categoriaActiva, dispositivo, empresaId, on
   }, [visible, dispositivo, categoriaActiva])
 
   function handleSave() {
+    if (categoriaActiva === 'web') {
+      if (!form.url?.trim()) { Alert.alert('Error', 'La URL es obligatoria'); return }
+      let nombreAuto = form.url.trim()
+      try { nombreAuto = new URL(form.url.trim()).hostname || form.url.trim() } catch {}
+      onSave({ ...form, nombre: nombreAuto, categoria: categoriaActiva, empresa_id: empresaId })
+      return
+    }
     if (!form.nombre?.trim()) { Alert.alert('Error', 'El nombre es obligatorio'); return }
     onSave({ ...form, categoria: categoriaActiva, empresa_id: empresaId })
   }
@@ -215,27 +227,30 @@ function DispositivoModal({ visible, categoriaActiva, dispositivo, empresaId, on
           </View>
 
           <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
-            <View style={{ marginBottom: 14 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Nombre *</Text>
-              <TextInput
-                style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
-                value={form.nombre || ''}
-                onChangeText={v => setForm(f => ({ ...f, nombre: v }))}
-                placeholder="Nombre del dispositivo"
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
-
-            <View style={{ marginBottom: 14 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>N° Serie</Text>
-              <TextInput
-                style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
-                value={form.numero_serie || ''}
-                onChangeText={v => setForm(f => ({ ...f, numero_serie: v }))}
-                placeholder="Número de serie"
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
+            {categoriaActiva !== 'web' && (
+              <>
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Nombre *</Text>
+                  <TextInput
+                    style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
+                    value={form.nombre || ''}
+                    onChangeText={v => setForm(f => ({ ...f, nombre: v }))}
+                    placeholder="Nombre del dispositivo"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>N° Serie</Text>
+                  <TextInput
+                    style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
+                    value={form.numero_serie || ''}
+                    onChangeText={v => setForm(f => ({ ...f, numero_serie: v }))}
+                    placeholder="Número de serie"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+              </>
+            )}
 
             {campos.map(({ key, label }) => {
               const sugerencias = key === 'tipo' ? (TIPO_SUGERENCIAS[categoriaActiva] || []) : []

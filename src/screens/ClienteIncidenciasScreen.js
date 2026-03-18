@@ -8,7 +8,23 @@ import { Ionicons } from '@expo/vector-icons'
 import * as DocumentPicker from 'expo-document-picker'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
-import { getIncidenciasCliente, createIncidenciaConArchivos } from '../services/api'
+import { getIncidenciasCliente, createIncidenciaConArchivos, getDispositivos } from '../services/api'
+
+const CAT_LABELS_MOBILE = {
+  equipo: 'Equipos', servidor: 'Servidores', nas: 'NAS',
+  red: 'Redes', correo: 'Correos', otro: 'Otros', web: 'Web',
+}
+const CAT_ICONS_MOBILE = {
+  equipo: 'desktop-outline', servidor: 'server-outline', nas: 'save-outline',
+  red: 'git-network-outline', correo: 'mail-outline', otro: 'cube-outline', web: 'globe-outline',
+}
+
+function truncFileName(name, max = 28) {
+  if (!name || name.length <= max) return name
+  const dot = name.lastIndexOf('.')
+  const ext = dot > 0 ? name.slice(dot) : ''
+  return name.slice(0, max - ext.length - 1) + '…' + ext
+}
 
 function formatFecha(iso) {
   if (!iso) return '—'
@@ -31,13 +47,34 @@ function EstadoBadge({ estado, colors }) {
   )
 }
 
-function NuevaIncidenciaModal({ visible, onClose, onSave, loading: saving, colors }) {
-  const [asunto, setAsunto]       = useState('')
-  const [descripcion, setDesc]    = useState('')
-  const [archivos, setArchivos]   = useState([])
+function NuevaIncidenciaModal({ visible, onClose, onSave, loading: saving, colors, dispositivos }) {
+  const [asunto, setAsunto]           = useState('')
+  const [descripcion, setDesc]        = useState('')
+  const [archivos, setArchivos]       = useState([])
+  const [sistema, setSistema]         = useState(null) // { cat, nombre }
+
+  // Build sistema options from dispositivos (same logic as web)
+  const opcionesSistema = (() => {
+    if (!dispositivos?.length) return []
+    const opts = []
+    const categorias = [...new Set(dispositivos.map(d => d.categoria))]
+    categorias.forEach(cat => {
+      const items = dispositivos.filter(d => d.categoria === cat)
+      if (cat === 'otro') {
+        items.forEach(item => opts.push({
+          cat: 'otro',
+          nombre: item.nombre || item.tipo || 'Otro',
+          icon: CAT_ICONS_MOBILE['otro'],
+        }))
+      } else {
+        opts.push({ cat, nombre: CAT_LABELS_MOBILE[cat] || cat, icon: CAT_ICONS_MOBILE[cat] || 'cube-outline' })
+      }
+    })
+    return opts
+  })()
 
   useEffect(() => {
-    if (visible) { setAsunto(''); setDesc(''); setArchivos([]) }
+    if (visible) { setAsunto(''); setDesc(''); setArchivos([]); setSistema(null) }
   }, [visible])
 
   async function pickArchivo() {
@@ -59,7 +96,7 @@ function NuevaIncidenciaModal({ visible, onClose, onSave, loading: saving, color
 
   function handleSave() {
     if (!asunto.trim()) { Alert.alert('Error', 'El asunto es obligatorio'); return }
-    onSave({ asunto: asunto.trim(), descripcion: descripcion.trim(), archivos })
+    onSave({ asunto: asunto.trim(), descripcion: descripcion.trim(), archivos, sistema })
   }
 
   return (
@@ -75,6 +112,36 @@ function NuevaIncidenciaModal({ visible, onClose, onSave, loading: saving, color
           </View>
 
           <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+
+            {/* Sistema selector */}
+            {opcionesSistema.length > 0 && (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 8, textTransform: 'uppercase' }}>Sistema afectado</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
+                  <TouchableOpacity
+                    onPress={() => setSistema(null)}
+                    style={{ alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginHorizontal: 4, borderWidth: 1.5, borderColor: !sistema ? colors.primary : colors.border, backgroundColor: !sistema ? colors.primaryBg : colors.bg }}
+                  >
+                    <Ionicons name="help-circle-outline" size={20} color={!sistema ? colors.primary : colors.textMuted} />
+                    <Text style={{ fontSize: 10, fontWeight: '600', color: !sistema ? colors.primary : colors.textMuted }}>Sin especificar</Text>
+                  </TouchableOpacity>
+                  {opcionesSistema.map((opt, i) => {
+                    const sel = sistema?.cat === opt.cat && sistema?.nombre === opt.nombre
+                    return (
+                      <TouchableOpacity
+                        key={i}
+                        onPress={() => setSistema(opt)}
+                        style={{ alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginHorizontal: 4, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primaryBg : colors.bg }}
+                      >
+                        <Ionicons name={opt.icon} size={20} color={sel ? colors.primary : colors.textMuted} />
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: sel ? colors.primary : colors.textMuted }}>{opt.nombre}</Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
             <View style={{ marginBottom: 16 }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>
                 Asunto *
@@ -111,7 +178,7 @@ function NuevaIncidenciaModal({ visible, onClose, onSave, loading: saving, color
               {archivos.map(file => (
                 <View key={file.uri} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: colors.inputBg, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 6 }}>
                   <Ionicons name="attach-outline" size={16} color={colors.primary} />
-                  <Text style={{ flex: 1, fontSize: 13, color: colors.text }} numberOfLines={1}>{file.name}</Text>
+                  <Text style={{ flex: 1, fontSize: 13, color: colors.text }} numberOfLines={1}>{truncFileName(file.name)}</Text>
                   {file.size != null && (
                     <Text style={{ fontSize: 11, color: colors.textMuted }}>{(file.size / 1024).toFixed(0)} KB</Text>
                   )}
@@ -164,11 +231,12 @@ export default function ClienteIncidenciasScreen({ navigation }) {
   const { user, logout } = useAuth()
   const { colors, isDark, toggleTheme } = useTheme()
 
-  const [tickets, setTickets]       = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [saving, setSaving]         = useState(false)
-  const [showCreate, setShowCreate] = useState(false)
+  const [tickets, setTickets]           = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [refreshing, setRefreshing]     = useState(false)
+  const [saving, setSaving]             = useState(false)
+  const [showCreate, setShowCreate]     = useState(false)
+  const [dispositivos, setDispositivos] = useState([])
 
   const load = useCallback(async () => {
     try {
@@ -177,7 +245,16 @@ export default function ClienteIncidenciasScreen({ navigation }) {
     } catch (e) { Alert.alert('Error', e.message) }
   }, [])
 
-  useEffect(() => { load().finally(() => setLoading(false)) }, [])
+  useEffect(() => {
+    load().finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (!user?.empresa_id) return
+    getDispositivos(user.empresa_id)
+      .then(data => setDispositivos((data || []).filter(d => d.categoria !== 'correo')))
+      .catch(() => {})
+  }, [user?.empresa_id])
 
   async function onRefresh() {
     setRefreshing(true)
@@ -185,10 +262,10 @@ export default function ClienteIncidenciasScreen({ navigation }) {
     setRefreshing(false)
   }
 
-  async function handleCreate({ asunto, descripcion, archivos }) {
+  async function handleCreate({ asunto, descripcion, archivos, sistema }) {
     setSaving(true)
     try {
-      await createIncidenciaConArchivos(asunto, descripcion, archivos)
+      await createIncidenciaConArchivos(asunto, descripcion, archivos, sistema?.cat || null, sistema?.nombre || null)
       setShowCreate(false)
       await load()
       Alert.alert('Enviada', 'Tu incidencia ha sido registrada correctamente.')
@@ -272,12 +349,21 @@ export default function ClienteIncidenciasScreen({ navigation }) {
           </TouchableOpacity>
         )}
         ListEmptyComponent={
-          <View style={{ alignItems: 'center', paddingTop: 60, gap: 12 }}>
-            <Ionicons name="alert-circle-outline" size={56} color={colors.textMuted} />
-            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>Sin incidencias</Text>
-            <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', paddingHorizontal: 32 }}>
-              Cuando tengas algún problema, pulsa el botón de abajo para reportarlo.
+          <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 32, gap: 14 }}>
+            <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.successBg, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="checkmark-circle" size={44} color={colors.success} />
+            </View>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Todo en orden</Text>
+            <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20 }}>
+              No tienes incidencias registradas.
             </Text>
+            <TouchableOpacity
+              onPress={() => setShowCreate(true)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.primary }}
+            >
+              <Ionicons name="add-circle-outline" size={20} color="#fff" />
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Crear primera incidencia</Text>
+            </TouchableOpacity>
           </View>
         }
       />
@@ -297,6 +383,7 @@ export default function ClienteIncidenciasScreen({ navigation }) {
         onSave={handleCreate}
         loading={saving}
         colors={colors}
+        dispositivos={dispositivos}
       />
     </SafeAreaView>
   )
