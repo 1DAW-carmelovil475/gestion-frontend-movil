@@ -58,7 +58,7 @@ const CAMPOS_CAT = {
     { key: 'password', label: 'Contraseña', secret: true },
   ],
   web: [
-    { key: 'url',      label: 'URL' },
+    { key: 'url', label: 'URL' },
   ],
   correo: [
     { key: 'tipo',     label: 'Servidor' },
@@ -182,35 +182,55 @@ function EditEmpresaSheet({ visible, empresa, onClose, onSave, colors }) {
   )
 }
 
+const WEB_FIXED_KEYS = ['puerto', 'ftp', 'password_ftp']
+
 function DispositivoModal({ visible, categoriaActiva, dispositivo, empresaId, onClose, onSave, colors }) {
   const campos = CAMPOS_CAT[categoriaActiva] || []
   const [form, setForm] = useState({})
+  const [extraFields, setExtraFields] = useState([])
 
   useEffect(() => {
     if (visible) {
       if (dispositivo) {
-        setForm({ ...dispositivo })
+        setForm({
+          ...dispositivo,
+          web_puerto:       dispositivo.campos_extra?.puerto       || '',
+          web_ftp:          dispositivo.campos_extra?.ftp          || '',
+          web_password_ftp: dispositivo.campos_extra?.password_ftp || '',
+        })
+        setExtraFields(
+          dispositivo.campos_extra
+            ? Object.entries(dispositivo.campos_extra)
+                .filter(([k]) => !WEB_FIXED_KEYS.includes(k))
+                .map(([k, v]) => ({ key: k, val: v }))
+            : []
+        )
       } else {
-        const def = { categoria: categoriaActiva, empresa_id: empresaId }
+        const def = { categoria: categoriaActiva, empresa_id: empresaId, web_puerto: '', web_ftp: '', web_password_ftp: '' }
         campos.forEach(c => { def[c.key] = '' })
         def.nombre = ''
         def.numero_serie = ''
-        def.notas = ''
         setForm(def)
+        setExtraFields([])
       }
     }
   }, [visible, dispositivo, categoriaActiva])
 
   function handleSave() {
+    const campos_extra = {}
+    extraFields.forEach(({ key, val }) => { if (key?.trim() && val?.trim()) campos_extra[key.trim()] = val.trim() })
     if (categoriaActiva === 'web') {
       if (!form.url?.trim()) { Alert.alert('Error', 'La URL es obligatoria'); return }
       let nombreAuto = form.url.trim()
       try { nombreAuto = new URL(form.url.trim()).hostname || form.url.trim() } catch {}
-      onSave({ ...form, nombre: nombreAuto, categoria: categoriaActiva, empresa_id: empresaId })
+      if (form.web_puerto) campos_extra.puerto = form.web_puerto
+      if (form.web_ftp)    campos_extra.ftp    = form.web_ftp
+      if (form.web_password_ftp) campos_extra.password_ftp = form.web_password_ftp
+      onSave({ ...form, nombre: nombreAuto, categoria: categoriaActiva, empresa_id: empresaId, campos_extra })
       return
     }
     if (!form.nombre?.trim()) { Alert.alert('Error', 'El nombre es obligatorio'); return }
-    onSave({ ...form, categoria: categoriaActiva, empresa_id: empresaId })
+    onSave({ ...form, categoria: categoriaActiva, empresa_id: empresaId, campos_extra })
   }
 
   return (
@@ -286,16 +306,81 @@ function DispositivoModal({ visible, categoriaActiva, dispositivo, empresaId, on
               )
             })}
 
-            <View style={{ marginBottom: 14 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Notas</Text>
-              <TextInput
-                style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text, height: 70, textAlignVertical: 'top', paddingTop: 10 }}
-                value={form.notas || ''}
-                onChangeText={v => setForm(f => ({ ...f, notas: v }))}
-                placeholder="Notas adicionales"
-                placeholderTextColor={colors.textMuted}
-                multiline
-              />
+            {/* Campos fijos web opcionales */}
+            {categoriaActiva === 'web' && (
+              <>
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Puerto</Text>
+                  <TextInput
+                    style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
+                    value={form.web_puerto || ''}
+                    onChangeText={v => setForm(f => ({ ...f, web_puerto: v }))}
+                    placeholder="443"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Usuario FTP</Text>
+                  <TextInput
+                    style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
+                    value={form.web_ftp || ''}
+                    onChangeText={v => setForm(f => ({ ...f, web_ftp: v }))}
+                    placeholder="ftpuser"
+                    placeholderTextColor={colors.textMuted}
+                    autoCapitalize="none"
+                  />
+                </View>
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Contraseña FTP</Text>
+                  <TextInput
+                    style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
+                    value={form.web_password_ftp || ''}
+                    onChangeText={v => setForm(f => ({ ...f, web_password_ftp: v }))}
+                    placeholder="••••••••"
+                    placeholderTextColor={colors.textMuted}
+                    secureTextEntry
+                  />
+                </View>
+              </>
+            )}
+
+            {/* Campos personalizados */}
+            <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 4, paddingTop: 14, marginBottom: 10 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase' }}>Campos personalizados</Text>
+                <TouchableOpacity
+                  onPress={() => setExtraFields(f => [...f, { key: '', val: '' }])}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.primary }}
+                >
+                  <Ionicons name="add" size={14} color={colors.primary} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Añadir</Text>
+                </TouchableOpacity>
+              </View>
+              {extraFields.map((ef, i) => (
+                <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                  <TextInput
+                    style={{ flex: 1, backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: colors.text }}
+                    value={ef.key}
+                    onChangeText={v => setExtraFields(prev => { const u = [...prev]; u[i] = { ...u[i], key: v }; return u })}
+                    placeholder="Campo"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  <TextInput
+                    style={{ flex: 1, backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: colors.text }}
+                    value={ef.val}
+                    onChangeText={v => setExtraFields(prev => { const u = [...prev]; u[i] = { ...u[i], val: v }; return u })}
+                    placeholder="Valor"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setExtraFields(prev => prev.filter((_, j) => j !== i))}
+                    style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#fee2e2', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Ionicons name="close" size={16} color="#b91c1c" />
+                  </TouchableOpacity>
+                </View>
+              ))}
             </View>
           </ScrollView>
 
@@ -358,11 +443,29 @@ function DispositivoCard({ disp, onEdit, onDelete, colors }) {
         )
       })}
 
-      {disp.notas ? (
-        <View style={{ marginTop: 6, padding: 8, backgroundColor: colors.card, borderRadius: 6 }}>
-          <Text style={{ fontSize: 12, color: colors.textMuted }}>{disp.notas}</Text>
+      {/* Campos fijos web */}
+      {disp.categoria === 'web' && disp.campos_extra?.puerto ? (
+        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+          <Text style={{ fontSize: 12, color: colors.textMuted, width: 80 }}>Puerto:</Text>
+          <Text style={{ fontSize: 12, color: colors.text }}>{disp.campos_extra.puerto}</Text>
         </View>
       ) : null}
+      {disp.categoria === 'web' && disp.campos_extra?.ftp ? (
+        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+          <Text style={{ fontSize: 12, color: colors.textMuted, width: 80 }}>FTP:</Text>
+          <Text style={{ fontSize: 12, color: colors.text }}>{disp.campos_extra.ftp}</Text>
+        </View>
+      ) : null}
+      {/* Campos personalizados */}
+      {disp.campos_extra && Object.entries(disp.campos_extra)
+        .filter(([k]) => !WEB_FIXED_KEYS.includes(k))
+        .map(([k, v]) => (
+          <View key={k} style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, color: colors.textMuted, width: 80 }} numberOfLines={1}>{k}:</Text>
+            <Text style={{ fontSize: 12, color: colors.text, flex: 1 }}>{v}</Text>
+          </View>
+        ))
+      }
     </View>
   )
 }

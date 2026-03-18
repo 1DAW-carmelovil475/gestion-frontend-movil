@@ -101,11 +101,11 @@ function AdminTabs() {
       })}
     >
       <Tab.Screen name="Empresas"     component={EmpresasStack} />
-      {(rol === 'admin' || rol === 'gestor') && (
+      {(rol === 'admin' || rol === 'gestor' || rol === 'desarrollador') && (
         <Tab.Screen name="Usuarios" component={UsuariosScreen} />
       )}
       <Tab.Screen name="Tickets"      component={TicketsStack} />
-      {(rol === 'admin' || rol === 'gestor') && (
+      {(rol === 'admin' || rol === 'gestor' || rol === 'desarrollador') && (
         <Tab.Screen name="Estadísticas" component={EstadisticasScreen} />
       )}
       <Tab.Screen name="Chat"         component={ChatScreen} />
