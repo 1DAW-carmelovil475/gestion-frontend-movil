@@ -31,18 +31,22 @@ function formatFecha(iso) {
   return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+function estadoCliente(estado) {
+  if (estado === 'Pendiente de facturar' || estado === 'Facturado') return 'Completado'
+  return estado
+}
+
 function EstadoBadge({ estado, colors }) {
+  const visible = estadoCliente(estado)
   const cfg = {
-    'Pendiente':             { bg: colors.warningBg,  txt: colors.warning },
-    'En curso':              { bg: colors.infoBg,     txt: colors.info },
-    'Completado':            { bg: colors.successBg,  txt: colors.success },
-    'Pendiente de facturar': { bg: colors.purpleBg,   txt: colors.purple },
-    'Facturado':             { bg: colors.cyanBg,     txt: colors.cyan },
+    'Pendiente':  { bg: colors.warningBg, txt: colors.warning },
+    'En curso':   { bg: colors.infoBg,    txt: colors.info },
+    'Completado': { bg: colors.successBg, txt: colors.success },
   }
-  const c = cfg[estado] || { bg: colors.badgeGray, txt: colors.textMuted }
+  const c = cfg[visible] || { bg: colors.badgeGray, txt: colors.textMuted }
   return (
     <View style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 10, backgroundColor: c.bg }}>
-      <Text style={{ fontSize: 11, fontWeight: '700', color: c.txt }}>{estado}</Text>
+      <Text style={{ fontSize: 11, fontWeight: '700', color: c.txt }}>{visible}</Text>
     </View>
   )
 }
@@ -273,8 +277,8 @@ export default function ClienteIncidenciasScreen({ navigation }) {
     finally { setSaving(false) }
   }
 
-  const abiertos  = tickets.filter(t => t.estado !== 'Completado' && t.estado !== 'Facturado').length
-  const cerrados  = tickets.filter(t => t.estado === 'Completado' || t.estado === 'Facturado').length
+  const abiertos = tickets.filter(t => estadoCliente(t.estado) !== 'Completado').length
+  const cerrados = tickets.filter(t => estadoCliente(t.estado) === 'Completado').length
 
   if (loading) {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}><ActivityIndicator size="large" color={colors.primary} /></View>
