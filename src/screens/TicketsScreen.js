@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput,
+  View, Text, StyleSheet, FlatList, SectionList, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, RefreshControl, Modal, ScrollView,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -610,6 +610,9 @@ export default function TicketsScreen({ navigation }) {
   const [showFilters, setShowFilters]       = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [page, setPage]           = useState(1)
+  const [mostrarCerrados, setMostrarCerrados] = useState(false)
+  const [collapsedSections, setCollapsedSections] = useState({})
+  const toggleSection = key => setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] }))
 
   const load = useCallback(async () => {
     try {
@@ -630,10 +633,42 @@ export default function TicketsScreen({ navigation }) {
     setRefreshing(false)
   }
 
+  const ESTADOS_ABIERTOS = ['Pendiente', 'En curso']
+  const ESTADOS_CERRADOS = ['Completado', 'Pendiente de facturar', 'Facturado']
+
+  function matchesSearch(t) {
+    if (!search) return true
+    return t.asunto?.toLowerCase().includes(search.toLowerCase()) ||
+      t.empresas?.nombre?.toLowerCase().includes(search.toLowerCase()) ||
+      String(t.numero || '').includes(search)
+  }
+
+  // Abiertos agrupados por operario
+  const sectionsByOperario = (() => {
+    const open = tickets.filter(t => ESTADOS_ABIERTOS.includes(t.estado) && matchesSearch(t) && (!filterPrioridad || t.prioridad === filterPrioridad))
+    const map = {}
+    open.forEach(t => {
+      const asigs = t.ticket_asignaciones || []
+      if (!asigs.length) {
+        if (!map['__sin__']) map['__sin__'] = { key: '__sin__', title: 'Sin asignar', allData: [] }
+        map['__sin__'].allData.push(t)
+      } else {
+        asigs.forEach(a => {
+          if (!map[a.user_id]) map[a.user_id] = { key: a.user_id, title: a.profiles?.nombre || '?', allData: [] }
+          map[a.user_id].allData.push(t)
+        })
+      }
+    })
+    return Object.values(map).map(s => ({
+      ...s,
+      count: s.allData.length,
+      data: collapsedSections[s.key] ? [] : s.allData,
+    }))
+  })()
+
   const filtered = tickets.filter(t => {
-    if (search && !t.asunto?.toLowerCase().includes(search.toLowerCase()) &&
-        !t.empresas?.nombre?.toLowerCase().includes(search.toLowerCase()) &&
-        !String(t.numero || '').includes(search)) return false
+    if (!ESTADOS_CERRADOS.includes(t.estado)) return false
+    if (!matchesSearch(t)) return false
     if (filterEstado && t.estado !== filterEstado) return false
     if (filterPrioridad && t.prioridad !== filterPrioridad) return false
     return true
@@ -642,7 +677,7 @@ export default function TicketsScreen({ navigation }) {
   // Reset page when search/filters change
   useEffect(() => {
     setPage(1)
-  }, [search, filterEstado, filterPrioridad])
+  }, [search, filterEstado, filterPrioridad, mostrarCerrados])
 
   const pagedData = filtered.slice(0, page * PAGE_SIZE)
   const hasMore = filtered.length > pagedData.length
@@ -683,11 +718,12 @@ export default function TicketsScreen({ navigation }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.headerBg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <View>
-          <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text }}>Tickets</Text>
-          <Text style={{ fontSize: 12, color: colors.textMuted }}>{total} ticket{total !== 1 ? 's' : ''}</Text>
-        </View>
+      <View style={{ paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.headerBg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <View>
+            <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text }}>Tickets</Text>
+            <Text style={{ fontSize: 12, color: colors.textMuted }}>{total} ticket{total !== 1 ? 's' : ''}</Text>
+          </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: getAvatarColor(user?.id), alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{getInitials(user?.nombre || user?.email)}</Text>
@@ -704,6 +740,21 @@ export default function TicketsScreen({ navigation }) {
             style={{ padding: 6 }}
           >
             <Ionicons name="log-out-outline" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+        {/* Toggle abiertos / cerrados */}
+        <View style={{ flexDirection: 'row', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+          <TouchableOpacity
+            onPress={() => setMostrarCerrados(false)}
+            style={{ flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: !mostrarCerrados ? colors.primary : colors.card }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '700', color: !mostrarCerrados ? '#fff' : colors.textMuted }}>Abiertos</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setMostrarCerrados(true)}
+            style={{ flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: mostrarCerrados ? colors.primary : colors.card, borderLeftWidth: 1, borderLeftColor: colors.border }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '700', color: mostrarCerrados ? '#fff' : colors.textMuted }}>Cerrados</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -732,25 +783,27 @@ export default function TicketsScreen({ navigation }) {
 
         {showFilters && (
           <View style={{ gap: 8 }}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                <TouchableOpacity
-                  style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1.5, borderColor: !filterEstado ? colors.primary : colors.border, backgroundColor: !filterEstado ? colors.primaryBg : colors.card }}
-                  onPress={() => setFilterEstado('')}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: !filterEstado ? colors.primary : colors.textMuted }}>Todos</Text>
-                </TouchableOpacity>
-                {ESTADOS.map(e => (
+            {mostrarCerrados && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
                   <TouchableOpacity
-                    key={e}
-                    style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1.5, borderColor: filterEstado === e ? colors.primary : colors.border, backgroundColor: filterEstado === e ? colors.primaryBg : colors.card }}
-                    onPress={() => setFilterEstado(filterEstado === e ? '' : e)}
+                    style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1.5, borderColor: !filterEstado ? colors.primary : colors.border, backgroundColor: !filterEstado ? colors.primaryBg : colors.card }}
+                    onPress={() => setFilterEstado('')}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: filterEstado === e ? colors.primary : colors.textMuted }}>{e}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: !filterEstado ? colors.primary : colors.textMuted }}>Todos</Text>
                   </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
+                  {ESTADOS_CERRADOS.map(e => (
+                    <TouchableOpacity
+                      key={e}
+                      style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1.5, borderColor: filterEstado === e ? colors.primary : colors.border, backgroundColor: filterEstado === e ? colors.primaryBg : colors.card }}
+                      onPress={() => setFilterEstado(filterEstado === e ? '' : e)}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: filterEstado === e ? colors.primary : colors.textMuted }}>{e}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={{ flexDirection: 'row', gap: 6 }}>
                 {PRIORIDADES.map(p => (
@@ -768,39 +821,81 @@ export default function TicketsScreen({ navigation }) {
         )}
       </View>
 
-      {/* List */}
-      <FlatList
-        data={pagedData}
-        keyExtractor={item => String(item.id)}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-        renderItem={({ item }) => (
-          <TicketCard
-            ticket={item}
-            colors={colors}
-            onPress={() => navigation.navigate('TicketDetalle', { ticket: item })}
-            onDelete={handleDelete}
-          />
-        )}
-        ListEmptyComponent={
-          <View style={{ alignItems: 'center', paddingTop: 60, gap: 12 }}>
-            <Ionicons name="headset-outline" size={48} color={colors.textMuted} />
-            <Text style={{ color: colors.textMuted, fontSize: 15 }}>Sin tickets</Text>
-          </View>
-        }
-        ListFooterComponent={
-          hasMore ? (
+      {/* List: abiertos agrupados | cerrados plano */}
+      {!mostrarCerrados ? (
+        <SectionList
+          sections={sectionsByOperario}
+          keyExtractor={item => String(item.id)}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          renderSectionHeader={({ section }) => (
             <TouchableOpacity
-              onPress={() => setPage(p => p + 1)}
-              style={{ marginTop: 4, marginBottom: 8, paddingVertical: 13, alignItems: 'center', borderRadius: 10, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.card }}
+              onPress={() => toggleSection(section.key)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, marginTop: 8, borderBottomWidth: 1.5, borderBottomColor: colors.border }}
             >
-              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
-                Cargar más ({filtered.length} total)
-              </Text>
+              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: getAvatarColor(section.key), alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 10, color: '#fff', fontWeight: '700' }}>{getInitials(section.title)}</Text>
+              </View>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, flex: 1 }}>Incidencias de {section.title}</Text>
+              <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, backgroundColor: colors.primary }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#fff' }}>{section.count}</Text>
+              </View>
+              <Ionicons
+                name={collapsedSections[section.key] ? 'chevron-forward' : 'chevron-down'}
+                size={16}
+                color={colors.textMuted}
+              />
             </TouchableOpacity>
-          ) : null
-        }
-      />
+          )}
+          renderItem={({ item }) => (
+            <TicketCard
+              ticket={item}
+              colors={colors}
+              onPress={() => navigation.navigate('TicketDetalle', { ticket: item })}
+              onDelete={handleDelete}
+            />
+          )}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', paddingTop: 60, gap: 12 }}>
+              <Ionicons name="checkmark-circle-outline" size={48} color={colors.success} />
+              <Text style={{ color: colors.textMuted, fontSize: 15 }}>No hay tickets abiertos</Text>
+            </View>
+          }
+        />
+      ) : (
+        <FlatList
+          data={pagedData}
+          keyExtractor={item => String(item.id)}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          renderItem={({ item }) => (
+            <TicketCard
+              ticket={item}
+              colors={colors}
+              onPress={() => navigation.navigate('TicketDetalle', { ticket: item })}
+              onDelete={handleDelete}
+            />
+          )}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', paddingTop: 60, gap: 12 }}>
+              <Ionicons name="headset-outline" size={48} color={colors.textMuted} />
+              <Text style={{ color: colors.textMuted, fontSize: 15 }}>Sin tickets cerrados</Text>
+            </View>
+          }
+          ListFooterComponent={
+            hasMore ? (
+              <TouchableOpacity
+                onPress={() => setPage(p => p + 1)}
+                style={{ marginTop: 4, marginBottom: 8, paddingVertical: 13, alignItems: 'center', borderRadius: 10, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.card }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
+                  Cargar más ({filtered.length} total)
+                </Text>
+              </TouchableOpacity>
+            ) : null
+          }
+        />
+      )}
 
       <NuevoTicketModal
         visible={showModal}

@@ -906,6 +906,20 @@ export default function EstadisticasScreen() {
                 colors={colors}
               />
             </View>
+
+            {emp.media_horas != null && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+                <Ionicons name="stopwatch-outline" size={13} color={colors.primary} />
+                <Text style={{ fontSize: 12, color: colors.textMuted }}>
+                  Media resolución:{' '}
+                  <Text style={{ fontWeight: '700', color: colors.primary }}>
+                    {emp.media_horas < 24
+                      ? `${emp.media_horas.toFixed(1)}h`
+                      : `${(emp.media_horas / 24).toFixed(1)}d`}
+                  </Text>
+                </Text>
+              </View>
+            )}
           </View>
         );
       })}
