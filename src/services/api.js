@@ -168,6 +168,8 @@ export const editChatMensaje       = (id, c)    => apiFetch(`/api/v2/chat/mensaj
 export const pinChatMensaje        = (id, a)    => apiFetch(`/api/v2/chat/mensajes/${id}/pin`, { method: 'PATCH', body: JSON.stringify({ anclado: a }) })
 export const addChatMiembros       = (cid, m)   => apiFetch(`/api/v2/chat/canales/${cid}/miembros`, { method: 'POST', body: JSON.stringify({ miembros: m }) })
 export const getChatArchivoUrl     = (id)       => apiFetch(`/api/v2/chat/archivos/${id}/url`)
+export const getChatPrefs          = ()         => apiFetch('/api/v2/chat/prefs')
+export const updateChatPrefs       = (prefs)    => apiFetch('/api/v2/chat/prefs', { method: 'PUT', body: JSON.stringify({ prefs }) })
 
 export async function sendChatMensaje(canalId, contenido, ticketRefId = null, files = []) {
   const token = await SecureStore.getItemAsync('hola_token')

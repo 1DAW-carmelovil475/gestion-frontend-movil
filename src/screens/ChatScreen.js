@@ -15,6 +15,7 @@ import {
   getChatCanales, createChatCanal, updateChatCanal, deleteChatCanal,
   getChatMensajes, sendChatMensaje, deleteChatMensaje, editChatMensaje,
   pinChatMensaje, getOperarios, getTickets, getChatArchivoUrl,
+  getChatPrefs, updateChatPrefs,
 } from '../services/api'
 
 const SIDEBAR_W = Dimensions.get('window').width * 0.78
@@ -257,32 +258,38 @@ function NuevoCanalModal({ visible, operarios, userId, onClose, onSave, colors }
 }
 
 // ─── EditCanalModal ──────────────────────────────────────────────────────────
-function EditCanalModal({ visible, canal, onClose, onSave, colors }) {
+function EditCanalModal({ visible, canal, operarios, userId, onClose, onSave, colors }) {
   const [nombre, setNombre] = useState('')
   const [descripcion, setDescripcion] = useState('')
+  const [miembros, setMiembros] = useState([])
 
   useEffect(() => {
     if (visible && canal) {
       setNombre(canal.nombre || '')
       setDescripcion(canal.descripcion || '')
+      setMiembros((canal.chat_canales_miembros || []).filter(m => m.user_id !== userId).map(m => m.user_id))
     }
   }, [visible, canal])
 
+  function toggleMiembro(id) {
+    setMiembros(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
   function handleSave() {
     if (!nombre.trim()) { Alert.alert('Error', 'El nombre es obligatorio'); return }
-    onSave({ nombre: nombre.trim(), descripcion })
+    onSave({ nombre: nombre.trim(), descripcion, miembros })
   }
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: colors.overlay }}>
-        <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 24 }}>
+        <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '85%', paddingBottom: 24 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>Editar canal</Text>
             <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity>
           </View>
-          <View style={{ padding: 20, gap: 14 }}>
-            <View>
+          <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+            <View style={{ marginBottom: 14 }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Nombre *</Text>
               <TextInput
                 style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
@@ -292,7 +299,7 @@ function EditCanalModal({ visible, canal, onClose, onSave, colors }) {
                 autoCapitalize="none"
               />
             </View>
-            <View>
+            <View style={{ marginBottom: 14 }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Descripción</Text>
               <TextInput
                 style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text, height: 70, textAlignVertical: 'top', paddingTop: 10 }}
@@ -302,7 +309,26 @@ function EditCanalModal({ visible, canal, onClose, onSave, colors }) {
                 multiline
               />
             </View>
-          </View>
+            <View>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 8, textTransform: 'uppercase' }}>Miembros</Text>
+              {(operarios || []).filter(op => op.id !== userId).map(op => {
+                const sel = miembros.includes(op.id)
+                return (
+                  <TouchableOpacity
+                    key={op.id}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                    onPress={() => toggleMiembro(op.id)}
+                  >
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: getAvatarColor(op.id), alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{getInitials(op.nombre)}</Text>
+                    </View>
+                    <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: colors.text }}>{op.nombre || op.email}</Text>
+                    <Ionicons name={sel ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={sel ? colors.primary : colors.border} />
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          </ScrollView>
           <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
             <TouchableOpacity style={{ flex: 1, paddingVertical: 13, alignItems: 'center', borderRadius: 8, borderWidth: 1.5, borderColor: colors.border }} onPress={onClose}>
               <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textMuted }}>Cancelar</Text>
@@ -534,10 +560,11 @@ export default function ChatScreen() {
   const userId = user?.id
 
   function updatePref(canalId, changes) {
-    setPrefs(prev => ({
-      ...prev,
-      [canalId]: { ...(prev[canalId] || {}), ...changes },
-    }))
+    setPrefs(prev => {
+      const next = { ...prev, [canalId]: { ...(prev[canalId] || {}), ...changes } }
+      updateChatPrefs(next).catch(() => {})
+      return next
+    })
   }
 
   function openDrawer() {
@@ -583,13 +610,15 @@ export default function ChatScreen() {
       getChatCanales(),
       getOperarios(),
       getTickets().catch(() => []),
-    ]).then(([c, o, t]) => {
+      getChatPrefs().catch(() => ({ prefs: {} })),
+    ]).then(([c, o, t, p]) => {
       const list = Array.isArray(c) ? c : (c?.canales || [])
       setCanales(list)
       setCanalOrder(prev => prev.length === 0 ? list.map(x => x.id) : prev)
       setOperarios(Array.isArray(o) ? o : [])
       const ticketList = Array.isArray(t) ? t : (t?.tickets || t?.data || [])
       setAllTickets(ticketList)
+      if (p?.prefs && Object.keys(p.prefs).length > 0) setPrefs(p.prefs)
       if (list.length > 0) setCanalActivo(list[0])
     }).catch(() => {}).finally(() => setLoading(false))
   }, [])
@@ -1535,6 +1564,8 @@ export default function ChatScreen() {
       <EditCanalModal
         visible={showEditCanalModal}
         canal={editingCanal}
+        operarios={operarios}
+        userId={userId}
         onClose={() => { setShowEditCanalModal(false); setEditingCanal(null) }}
         onSave={handleEditarCanal}
         colors={colors}

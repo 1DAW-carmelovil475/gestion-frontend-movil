@@ -628,6 +628,11 @@ export default function TicketsScreen({ navigation }) {
     load().finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    const interval = setInterval(() => { load().catch(() => {}) }, 30000)
+    return () => clearInterval(interval)
+  }, [load])
+
   async function onRefresh() {
     setRefreshing(true)
     await load()
