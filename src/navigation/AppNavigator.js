@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { Ionicons } from '@expo/vector-icons'
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useChatNotifications } from '../context/ChatNotificationsContext'
@@ -54,6 +55,7 @@ function AdminTabs() {
   const { user } = useAuth()
   const { colors, isDark } = useTheme()
   const { totalUnread } = useChatNotifications()
+  const insets = useSafeAreaInsets()
   const rol = user?.rol
 
   return (
@@ -63,8 +65,8 @@ function AdminTabs() {
         tabBarStyle: {
           backgroundColor: colors.tabBar,
           borderTopColor:  colors.tabBorder,
-          height: 60,
-          paddingBottom: 6,
+          height: 60 + insets.bottom,
+          paddingBottom: 6 + insets.bottom,
           paddingTop: 4,
         },
         tabBarActiveTintColor:   colors.primary,
@@ -115,6 +117,7 @@ function AdminTabs() {
 
 function ClienteTabs() {
   const { colors } = useTheme()
+  const insets = useSafeAreaInsets()
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -122,8 +125,8 @@ function ClienteTabs() {
         tabBarStyle: {
           backgroundColor: colors.tabBar,
           borderTopColor:  colors.tabBorder,
-          height: 60,
-          paddingBottom: 6,
+          height: 60 + insets.bottom,
+          paddingBottom: 6 + insets.bottom,
           paddingTop: 4,
         },
         tabBarActiveTintColor:   colors.primary,

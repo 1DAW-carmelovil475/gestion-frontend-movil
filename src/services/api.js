@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store'
+import { API_BASE_URL } from '../config'
 
-export const API_URL = 'http://192.168.20.52:3000'
+export const API_URL = API_BASE_URL
 // ────────────────────────────────────────────────────────────────────────────
 
 async function tryRefreshTokenInternal() {

@@ -611,6 +611,7 @@ export default function TicketsScreen({ navigation }) {
   const [showModal, setShowModal] = useState(false)
   const [page, setPage]           = useState(1)
   const [mostrarCerrados, setMostrarCerrados] = useState(false)
+  const [filterOperario, setFilterOperario] = useState('all')
   const [collapsedSections, setCollapsedSections] = useState({})
   const toggleSection = key => setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] }))
 
@@ -643,17 +644,31 @@ export default function TicketsScreen({ navigation }) {
       String(t.numero || '').includes(search)
   }
 
+  // Stats computados desde tickets (siempre frescos)
+  const statAbiertosTotal = tickets.filter(t => ESTADOS_ABIERTOS.includes(t.estado)).length
+  const statMisAbiertos   = tickets.filter(t => ESTADOS_ABIERTOS.includes(t.estado) && (t.ticket_asignaciones || []).some(a => a.user_id === user?.id)).length
+  const statCompletados   = tickets.filter(t => t.estado === 'Completado').length
+  const statPendFacturar  = tickets.filter(t => t.estado === 'Pendiente de facturar').length
+  const statFacturados    = tickets.filter(t => t.estado === 'Facturado').length
+
   // Abiertos agrupados por operario
   const sectionsByOperario = (() => {
-    const open = tickets.filter(t => ESTADOS_ABIERTOS.includes(t.estado) && matchesSearch(t) && (!filterPrioridad || t.prioridad === filterPrioridad))
+    const open = tickets.filter(t => {
+      if (!ESTADOS_ABIERTOS.includes(t.estado)) return false
+      if (!matchesSearch(t)) return false
+      if (filterOperario !== 'all' && !(t.ticket_asignaciones || []).some(a => a.user_id === filterOperario)) return false
+      return true
+    })
     const map = {}
     open.forEach(t => {
       const asigs = t.ticket_asignaciones || []
       if (!asigs.length) {
+        if (filterOperario !== 'all') return
         if (!map['__sin__']) map['__sin__'] = { key: '__sin__', title: 'Sin asignar', allData: [] }
         map['__sin__'].allData.push(t)
       } else {
         asigs.forEach(a => {
+          if (filterOperario !== 'all' && a.user_id !== filterOperario) return
           if (!map[a.user_id]) map[a.user_id] = { key: a.user_id, title: a.profiles?.nombre || '?', allData: [] }
           map[a.user_id].allData.push(t)
         })
@@ -682,13 +697,7 @@ export default function TicketsScreen({ navigation }) {
   const pagedData = filtered.slice(0, page * PAGE_SIZE)
   const hasMore = filtered.length > pagedData.length
 
-  const total        = tickets.length
-  const pendientes   = tickets.filter(t => t.estado === 'Pendiente').length
-  const enCurso      = tickets.filter(t => t.estado === 'En curso').length
-  const completados  = tickets.filter(t => t.estado === 'Completado').length
-  const pendFact     = tickets.filter(t => t.estado === 'Pendiente de facturar').length
-  const facturados   = tickets.filter(t => t.estado === 'Facturado').length
-  const urgentes     = tickets.filter(t => t.prioridad === 'Urgente').length
+  const total = tickets.length
 
   async function handleCreate(form) {
     try {
@@ -742,21 +751,7 @@ export default function TicketsScreen({ navigation }) {
             <Ionicons name="log-out-outline" size={20} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
-        {/* Toggle abiertos / cerrados */}
-        <View style={{ flexDirection: 'row', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
-          <TouchableOpacity
-            onPress={() => setMostrarCerrados(false)}
-            style={{ flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: !mostrarCerrados ? colors.primary : colors.card }}
-          >
-            <Text style={{ fontSize: 13, fontWeight: '700', color: !mostrarCerrados ? '#fff' : colors.textMuted }}>Abiertos</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setMostrarCerrados(true)}
-            style={{ flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: mostrarCerrados ? colors.primary : colors.card, borderLeftWidth: 1, borderLeftColor: colors.border }}
-          >
-            <Text style={{ fontSize: 13, fontWeight: '700', color: mostrarCerrados ? '#fff' : colors.textMuted }}>Cerrados</Text>
-          </TouchableOpacity>
-        </View>
+      </View>
       </View>
 
       {/* Search + filter */}
@@ -804,21 +799,73 @@ export default function TicketsScreen({ navigation }) {
                 </View>
               </ScrollView>
             )}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                {PRIORIDADES.map(p => (
-                  <TouchableOpacity
-                    key={p}
-                    style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1.5, borderColor: filterPrioridad === p ? colors.primary : colors.border, backgroundColor: filterPrioridad === p ? colors.primaryBg : colors.card }}
-                    onPress={() => setFilterPrioridad(filterPrioridad === p ? '' : p)}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: filterPrioridad === p ? colors.primary : colors.textMuted }}>{p}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
           </View>
         )}
+      </View>
+
+      {/* Stats bar */}
+      <View style={{ flexDirection: 'row', marginHorizontal: 16, marginBottom: 8, gap: 8 }}>
+        {!mostrarCerrados ? (
+          <>
+            <TouchableOpacity
+              onPress={() => setFilterOperario('all')}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1.5, borderColor: filterOperario === 'all' ? colors.primary : colors.border, backgroundColor: colors.card }}
+            >
+              <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: filterOperario === 'all' ? colors.primaryBg : colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="ticket-outline" size={14} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{statAbiertosTotal}</Text>
+                <Text style={{ fontSize: 10, color: colors.textMuted }}>Total</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setFilterOperario(user?.id)}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1.5, borderColor: filterOperario === user?.id ? '#d97706' : colors.border, backgroundColor: colors.card }}
+            >
+              <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: filterOperario === user?.id ? '#fef3c7' : colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="person-outline" size={14} color="#d97706" />
+              </View>
+              <View>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{statMisAbiertos}</Text>
+                <Text style={{ fontSize: 10, color: colors.textMuted }}>Mis abiertos</Text>
+              </View>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            {[
+              { label: 'Completados',    val: statCompletados,  estado: 'Completado',            color: '#16a34a', bg: '#dcfce7' },
+              { label: 'Pend. fact.',    val: statPendFacturar, estado: 'Pendiente de facturar', color: '#ea580c', bg: '#fff7ed' },
+              { label: 'Facturados',     val: statFacturados,   estado: 'Facturado',             color: '#9333ea', bg: '#f3e8ff' },
+            ].map(s => (
+              <TouchableOpacity
+                key={s.estado}
+                onPress={() => setFilterEstado(filterEstado === s.estado ? '' : s.estado)}
+                style={{ flex: 1, alignItems: 'center', padding: 10, borderRadius: 10, borderWidth: 1.5, borderColor: filterEstado === s.estado ? s.color : colors.border, backgroundColor: colors.card }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{s.val}</Text>
+                <Text style={{ fontSize: 9, color: colors.textMuted, textAlign: 'center' }}>{s.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
+      </View>
+
+      {/* Toggle abiertos / cerrados */}
+      <View style={{ flexDirection: 'row', marginHorizontal: 16, marginBottom: 8, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+        <TouchableOpacity
+          onPress={() => setMostrarCerrados(false)}
+          style={{ flex: 1, paddingVertical: 9, alignItems: 'center', backgroundColor: !mostrarCerrados ? colors.primary : colors.card }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '700', color: !mostrarCerrados ? '#fff' : colors.textMuted }}>Abiertos</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setMostrarCerrados(true)}
+          style={{ flex: 1, paddingVertical: 9, alignItems: 'center', backgroundColor: mostrarCerrados ? colors.primary : colors.card, borderLeftWidth: 1, borderLeftColor: colors.border }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '700', color: mostrarCerrados ? '#fff' : colors.textMuted }}>Cerrados</Text>
+        </TouchableOpacity>
       </View>
 
       {/* List: abiertos agrupados | cerrados plano */}
@@ -826,6 +873,7 @@ export default function TicketsScreen({ navigation }) {
         <SectionList
           sections={sectionsByOperario}
           keyExtractor={item => String(item.id)}
+          stickySectionHeadersEnabled={false}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           renderSectionHeader={({ section }) => (
