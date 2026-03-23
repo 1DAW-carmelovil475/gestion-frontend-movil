@@ -5,6 +5,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import * as Clipboard from 'expo-clipboard'
 import { useTheme } from '../context/ThemeContext'
 import {
   getDispositivos, createDispositivo, updateDispositivo, deleteDispositivo,
@@ -36,29 +37,29 @@ const CAMPOS_CAT = {
     { key: 'tipo',       label: 'Tipo' },
     { key: 'usuario',    label: 'Usuario' },
     { key: 'password',   label: 'Contraseña', secret: true },
-    { key: 'ip',         label: 'IP' },
-    { key: 'anydesk_id', label: 'AnyDesk ID' },
+    { key: 'ip',         label: 'IP', copyable: true },
+    { key: 'anydesk_id', label: 'AnyDesk ID', copyable: true },
   ],
   servidor: [
     { key: 'tipo',     label: 'Tipo' },
-    { key: 'ip',       label: 'IP' },
+    { key: 'ip',       label: 'IP', copyable: true },
     { key: 'usuario',  label: 'Usuario' },
     { key: 'password', label: 'Contraseña', secret: true },
   ],
   nas: [
     { key: 'tipo',     label: 'Modelo' },
-    { key: 'ip',       label: 'IP' },
+    { key: 'ip',       label: 'IP', copyable: true },
     { key: 'usuario',  label: 'Usuario' },
     { key: 'password', label: 'Contraseña', secret: true },
   ],
   red: [
     { key: 'tipo',     label: 'Tipo' },
-    { key: 'ip',       label: 'IP' },
+    { key: 'ip',       label: 'IP', copyable: true },
     { key: 'usuario',  label: 'Usuario' },
     { key: 'password', label: 'Contraseña', secret: true },
   ],
   web: [
-    { key: 'url', label: 'URL' },
+    { key: 'url', label: 'URL', copyable: true },
   ],
   correo: [
     { key: 'tipo',     label: 'Servidor' },
@@ -400,7 +401,14 @@ function DispositivoModal({ visible, categoriaActiva, dispositivo, empresaId, on
 
 function DispositivoCard({ disp, onEdit, onDelete, colors }) {
   const [showPwd, setShowPwd] = useState(false)
+  const [copiedField, setCopiedField] = useState(null)
   const campos = CAMPOS_CAT[disp.categoria] || []
+
+  const handleCopy = async (fieldKey, value) => {
+    await Clipboard.setStringAsync(value)
+    setCopiedField(fieldKey)
+    setTimeout(() => setCopiedField(null), 2000)
+  }
 
   return (
     <View style={{ backgroundColor: colors.bg, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 14, marginBottom: 10 }}>
@@ -423,7 +431,7 @@ function DispositivoCard({ disp, onEdit, onDelete, colors }) {
         </View>
       ) : null}
 
-      {campos.map(({ key, label, secret }) => {
+      {campos.map(({ key, label, secret, copyable }) => {
         const val = disp[key]
         if (!val) return null
         return (
@@ -434,6 +442,17 @@ function DispositivoCard({ disp, onEdit, onDelete, colors }) {
                 <Text style={{ fontSize: 12, color: colors.text }}>{showPwd ? val : '••••••••'}</Text>
                 <TouchableOpacity onPress={() => setShowPwd(v => !v)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                   <Ionicons name={showPwd ? 'eye-off-outline' : 'eye-outline'} size={14} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+            ) : copyable ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 }}>
+                <Text style={{ fontSize: 12, color: colors.text, flex: 1 }} numberOfLines={1} ellipsizeMode="tail">{val}</Text>
+                <TouchableOpacity onPress={() => handleCopy(key, val)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <Ionicons
+                    name={copiedField === key ? 'checkmark-outline' : 'copy-outline'}
+                    size={14}
+                    color={copiedField === key ? '#16a34a' : colors.textMuted}
+                  />
                 </TouchableOpacity>
               </View>
             ) : (
