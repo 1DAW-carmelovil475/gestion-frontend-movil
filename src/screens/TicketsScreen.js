@@ -3,17 +3,33 @@ import {
   View, Text, StyleSheet, FlatList, SectionList, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, RefreshControl, Modal, ScrollView,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import {
-  getTickets, createTicket, deleteTicket,
+  getTickets, createTicket, updateTicket, deleteTicket,
   getEmpresas, getOperarios, getDispositivos,
+  assignOperarios, removeOperario,
+  updateEmpresa, createDispositivo,
 } from '../services/api'
 
 const ESTADOS = ['Pendiente', 'En curso', 'Completado', 'Pendiente de facturar', 'Facturado']
 const PRIORIDADES = ['Baja', 'Media', 'Alta', 'Urgente']
+const DEVICE_CATEGORIAS = [
+  { key: 'equipo',   label: 'Equipos',    icon: 'desktop-outline' },
+  { key: 'servidor', label: 'Servidores', icon: 'server-outline' },
+  { key: 'nas',      label: 'NAS',        icon: 'save-outline' },
+  { key: 'red',      label: 'Redes',      icon: 'wifi-outline' },
+  { key: 'web',      label: 'Web',        icon: 'globe-outline' },
+]
+const DEVICE_TIPO_SUGERENCIAS = {
+  equipo:   ['PC', 'Portátil', 'Cámara de Seguridad', 'Impresora', 'Tablet', 'All-in-One'],
+  servidor: ['Servidor Físico', 'Servidor Virtual', 'Servidor de Archivos'],
+  nas:      ['NAS Synology', 'NAS QNAP'],
+  red:      ['Router', 'Switch', 'Access Point', 'Firewall', 'Modem'],
+  web:      ['Web corporativa', 'Tienda online', 'Portal', 'Aplicación web'],
+}
 const PAGE_SIZE = 25
 
 const AVATAR_COLORS = ['#0066ff', '#16a34a', '#d97706', '#dc2626', '#9333ea', '#0891b2', '#be185d', '#065f46']
@@ -89,11 +105,6 @@ function SearchableSelect({ label, placeholder, items, selectedId, onSelect, col
     setQuery('')
   }
 
-  function handleOpen() {
-    setQuery('')
-    setOpen(true)
-  }
-
   return (
     <View style={{ marginBottom: 14 }}>
       {label ? (
@@ -104,12 +115,12 @@ function SearchableSelect({ label, placeholder, items, selectedId, onSelect, col
 
       {/* Trigger button */}
       <TouchableOpacity
-        onPress={handleOpen}
+        onPress={() => { setQuery(''); setOpen(o => !o) }}
         style={{
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
           backgroundColor: colors.inputBg, borderWidth: 1.5,
-          borderColor: selectedId ? colors.primary : colors.inputBorder,
-          borderRadius: 8, paddingHorizontal: 12, paddingVertical: 11,
+          borderColor: open ? colors.primary : (selectedId ? colors.primary : colors.inputBorder),
+          borderRadius: open ? 8 : 8, paddingHorizontal: 12, paddingVertical: 11,
         }}
       >
         <Text style={{ fontSize: 14, color: selected ? colors.text : colors.textMuted, flex: 1 }} numberOfLines={1}>
@@ -118,65 +129,55 @@ function SearchableSelect({ label, placeholder, items, selectedId, onSelect, col
         <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
       </TouchableOpacity>
 
-      {/* Inline dropdown modal */}
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => { setOpen(false); setQuery('') }}>
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', paddingHorizontal: 20 }}
-          activeOpacity={1}
-          onPress={() => { setOpen(false); setQuery('') }}
-        >
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View style={{ backgroundColor: colors.card, borderRadius: 14, overflow: 'hidden', maxHeight: 400 }}>
-              {/* Search bar */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                <Ionicons name="search-outline" size={16} color={colors.textMuted} />
-                <TextInput
-                  style={{ flex: 1, fontSize: 14, color: colors.text }}
-                  placeholder="Buscar empresa..."
-                  placeholderTextColor={colors.textMuted}
-                  value={query}
-                  onChangeText={setQuery}
-                  autoFocus
-                />
-                {query ? (
-                  <TouchableOpacity onPress={() => setQuery('')}>
-                    <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-                  </TouchableOpacity>
-                ) : null}
+      {/* Inline dropdown — no nested Modal */}
+      {open && (
+        <View style={{ borderWidth: 1.5, borderColor: colors.primary, borderTopWidth: 0, borderBottomLeftRadius: 8, borderBottomRightRadius: 8, backgroundColor: colors.card, overflow: 'hidden', maxHeight: 260 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Ionicons name="search-outline" size={14} color={colors.textMuted} />
+            <TextInput
+              style={{ flex: 1, fontSize: 13, color: colors.text }}
+              placeholder="Buscar..."
+              placeholderTextColor={colors.textMuted}
+              value={query}
+              onChangeText={setQuery}
+              autoFocus
+            />
+            {query ? (
+              <TouchableOpacity onPress={() => setQuery('')}>
+                <Ionicons name="close-circle" size={14} color={colors.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 200 }} nestedScrollEnabled>
+            {filtered.length === 0 ? (
+              <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                <Text style={{ color: colors.textMuted, fontSize: 13 }}>Sin resultados</Text>
               </View>
-              {/* List */}
-              <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 320 }}>
-                {filtered.length === 0 ? (
-                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-                    <Text style={{ color: colors.textMuted, fontSize: 13 }}>Sin resultados</Text>
-                  </View>
-                ) : (
-                  filtered.map((item, idx) => (
-                    <TouchableOpacity
-                      key={item.id}
-                      onPress={() => handleSelect(item)}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                        paddingHorizontal: 16, paddingVertical: 13,
-                        borderBottomWidth: idx < filtered.length - 1 ? 1 : 0,
-                        borderBottomColor: colors.border,
-                        backgroundColor: item.id === selectedId ? colors.primaryBg : 'transparent',
-                      }}
-                    >
-                      <Text style={{ fontSize: 14, color: item.id === selectedId ? colors.primary : colors.text, fontWeight: item.id === selectedId ? '700' : '400', flex: 1 }} numberOfLines={1}>
-                        {item.nombre}
-                      </Text>
-                      {item.id === selectedId && (
-                        <Ionicons name="checkmark" size={16} color={colors.primary} />
-                      )}
-                    </TouchableOpacity>
-                  ))
-                )}
-              </ScrollView>
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+            ) : (
+              filtered.map((item, idx) => (
+                <TouchableOpacity
+                  key={item.id}
+                  onPress={() => handleSelect(item)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                    paddingHorizontal: 14, paddingVertical: 11,
+                    borderBottomWidth: idx < filtered.length - 1 ? 1 : 0,
+                    borderBottomColor: colors.border,
+                    backgroundColor: item.id === selectedId ? colors.primaryBg : 'transparent',
+                  }}
+                >
+                  <Text style={{ fontSize: 14, color: item.id === selectedId ? colors.primary : colors.text, fontWeight: item.id === selectedId ? '700' : '400', flex: 1 }} numberOfLines={1}>
+                    {item.nombre}
+                  </Text>
+                  {item.id === selectedId && (
+                    <Ionicons name="checkmark" size={16} color={colors.primary} />
+                  )}
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      )}
     </View>
   )
 }
@@ -241,91 +242,365 @@ function SearchableMultiSelect({ label, placeholder, items, selectedIds, onToggl
         </View>
       )}
 
-      {/* Dropdown modal */}
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => { setOpen(false); setQuery('') }}>
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', paddingHorizontal: 20 }}
-          activeOpacity={1}
-          onPress={() => { setOpen(false); setQuery('') }}
-        >
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View style={{ backgroundColor: colors.card, borderRadius: 14, overflow: 'hidden', maxHeight: 420 }}>
-              {/* Header */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Seleccionar operarios</Text>
-                <TouchableOpacity onPress={() => { setOpen(false); setQuery('') }}>
-                  <Ionicons name="close" size={20} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-              {/* Search */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                <Ionicons name="search-outline" size={16} color={colors.textMuted} />
-                <TextInput
-                  style={{ flex: 1, fontSize: 14, color: colors.text }}
-                  placeholder="Buscar operario..."
-                  placeholderTextColor={colors.textMuted}
-                  value={query}
-                  onChangeText={setQuery}
-                  autoFocus
-                />
-                {query ? (
-                  <TouchableOpacity onPress={() => setQuery('')}>
-                    <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-              {/* List */}
-              <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 320 }}>
-                {filtered.length === 0 ? (
-                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-                    <Text style={{ color: colors.textMuted, fontSize: 13 }}>Sin resultados</Text>
+      {/* Inline dropdown */}
+      {open && (
+        <View style={{ borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, marginTop: 4, backgroundColor: colors.card, overflow: 'hidden' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Ionicons name="search-outline" size={15} color={colors.textMuted} />
+            <TextInput
+              style={{ flex: 1, fontSize: 13, color: colors.text }}
+              placeholder="Buscar operario..."
+              placeholderTextColor={colors.textMuted}
+              value={query}
+              onChangeText={setQuery}
+            />
+            {query ? <TouchableOpacity onPress={() => setQuery('')}><Ionicons name="close-circle" size={15} color={colors.textMuted} /></TouchableOpacity> : null}
+          </View>
+          {filtered.length === 0 ? (
+            <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+              <Text style={{ color: colors.textMuted, fontSize: 13 }}>Sin resultados</Text>
+            </View>
+          ) : (
+            filtered.map((item, idx) => {
+              const sel = selectedIds.includes(item.id)
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  onPress={() => onToggle(item.id)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: idx < filtered.length - 1 ? 1 : 0, borderBottomColor: colors.border, backgroundColor: sel ? colors.primaryBg : 'transparent' }}
+                >
+                  <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: getAvatarColor(item.id), alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 10, color: '#fff', fontWeight: '700' }}>{getInitials(item.nombre)}</Text>
                   </View>
-                ) : (
-                  filtered.map((item, idx) => {
-                    const sel = selectedIds.includes(item.id)
-                    return (
-                      <TouchableOpacity
-                        key={item.id}
-                        onPress={() => onToggle(item.id)}
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 10,
-                          paddingHorizontal: 16, paddingVertical: 12,
-                          borderBottomWidth: idx < filtered.length - 1 ? 1 : 0,
-                          borderBottomColor: colors.border,
-                          backgroundColor: sel ? colors.primaryBg : 'transparent',
-                        }}
-                      >
-                        <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: getAvatarColor(item.id), alignItems: 'center', justifyContent: 'center' }}>
-                          <Text style={{ fontSize: 11, color: '#fff', fontWeight: '700' }}>{getInitials(item.nombre)}</Text>
-                        </View>
-                        <Text style={{ flex: 1, fontSize: 14, color: sel ? colors.primary : colors.text, fontWeight: sel ? '700' : '400' }} numberOfLines={1}>
-                          {item.nombre}
-                        </Text>
-                        {sel && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
-                      </TouchableOpacity>
-                    )
-                  })
+                  <Text style={{ flex: 1, fontSize: 13, color: sel ? colors.primary : colors.text, fontWeight: sel ? '700' : '400' }} numberOfLines={1}>{item.nombre}</Text>
+                  {sel && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
+                </TouchableOpacity>
+              )
+            })
+          )}
+          <TouchableOpacity onPress={() => { setOpen(false); setQuery('') }} style={{ margin: 10, paddingVertical: 10, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>{selectedIds.length > 0 ? `Confirmar (${selectedIds.length})` : 'Cerrar'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  )
+}
+
+// ─── CrearContactoModal ───────────────────────────────────────────────────────
+function CrearContactoModal({ visible, empresaId, empresas, onClose, onSaved, colors }) {
+  const [nombre, setNombre] = useState('')
+  const [telefono, setTelefono] = useState('')
+  const [email, setEmail] = useState('')
+  const [cargo, setCargo] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (visible) { setNombre(''); setTelefono(''); setEmail(''); setCargo('') }
+  }, [visible])
+
+  async function handleSave() {
+    if (!nombre.trim()) { Alert.alert('Error', 'El nombre es obligatorio'); return }
+    setSaving(true)
+    try {
+      const empresa = empresas.find(e => e.id === empresaId)
+      const newContact = { nombre: nombre.trim(), telefono: telefono.trim() || null, email: email.trim() || null, cargo: cargo.trim() || null }
+      const nuevosContactos = [...(empresa?.contactos || []), newContact]
+      await updateEmpresa(empresaId, { ...empresa, contactos: nuevosContactos })
+      onSaved(newContact, nuevosContactos)
+    } catch (e) { Alert.alert('Error', e.message) }
+    finally { setSaving(false) }
+  }
+
+  const inp = { backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }
+  const lbl = { fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }
+
+  if (!visible) return null
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end', backgroundColor: colors.overlay, zIndex: 999 }}>
+      <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%', paddingBottom: 24 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>Nuevo contacto</Text>
+            <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity>
+          </View>
+          <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+            <View style={{ marginBottom: 14 }}>
+              <Text style={lbl}>Nombre *</Text>
+              <TextInput style={inp} value={nombre} onChangeText={setNombre} placeholder="Nombre del contacto" placeholderTextColor={colors.textMuted} />
+            </View>
+            <View style={{ marginBottom: 14 }}>
+              <Text style={lbl}>Teléfono</Text>
+              <TextInput style={inp} value={telefono} onChangeText={setTelefono} placeholder="612 345 678" placeholderTextColor={colors.textMuted} keyboardType="phone-pad" />
+            </View>
+            <View style={{ marginBottom: 14 }}>
+              <Text style={lbl}>Email</Text>
+              <TextInput style={inp} value={email} onChangeText={setEmail} placeholder="contacto@empresa.com" placeholderTextColor={colors.textMuted} keyboardType="email-address" autoCapitalize="none" />
+            </View>
+            <View style={{ marginBottom: 14 }}>
+              <Text style={lbl}>Cargo</Text>
+              <TextInput style={inp} value={cargo} onChangeText={setCargo} placeholder="Ej: Responsable IT, Gerente..." placeholderTextColor={colors.textMuted} />
+            </View>
+          </ScrollView>
+          <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <TouchableOpacity style={{ flex: 1, paddingVertical: 13, alignItems: 'center', borderRadius: 8, borderWidth: 1.5, borderColor: colors.border }} onPress={onClose}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textMuted }}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ flex: 2, paddingVertical: 13, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }} onPress={handleSave} disabled={saving}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#ffffff' }}>{saving ? 'Guardando...' : 'Guardar contacto'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+    </View>
+  )
+}
+
+// ─── AñadirDispositivoModal ───────────────────────────────────────────────────
+function AñadirDispositivoModal({ visible, empresaId, onClose, onSaved, colors }) {
+  const [step, setStep] = useState('select')
+  const [categoria, setCategoria] = useState('')
+  const [form, setForm] = useState({})
+  const [extraFields, setExtraFields] = useState([])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (visible) { setStep('select'); setCategoria(''); setForm({}); setExtraFields([]) }
+  }, [visible])
+
+  function selectCategoria(cat) {
+    setCategoria(cat)
+    setForm({})
+    setExtraFields([])
+    setStep('form')
+  }
+
+  function f(key) { return form[key] || '' }
+  function setF(key, val) { setForm(prev => ({ ...prev, [key]: val })) }
+
+  async function handleSave() {
+    if (!f('nombre').trim()) { Alert.alert('Error', 'El nombre es obligatorio'); return }
+    if (categoria === 'equipo' && !f('numero_serie').trim()) { Alert.alert('Error', 'El número de serie es obligatorio'); return }
+    const campos_extra = {}
+    extraFields.forEach(({ key, val }) => { if (key.trim()) campos_extra[key.trim()] = val })
+    setSaving(true)
+    try {
+      const payload = { ...form, empresa_id: empresaId, categoria, campos_extra }
+      const newDevice = await createDispositivo(payload)
+      onSaved(newDevice)
+    } catch (e) { Alert.alert('Error', e.message) }
+    finally { setSaving(false) }
+  }
+
+  const inp = { backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }
+  const lbl = { fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }
+  const sugerencias = DEVICE_TIPO_SUGERENCIAS[categoria] || []
+
+  if (!visible) return null
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end', backgroundColor: colors.overlay, zIndex: 999 }}>
+      <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%', paddingBottom: 24 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              {step === 'form' && (
+                <TouchableOpacity onPress={() => setStep('select')}>
+                  <Ionicons name="arrow-back" size={22} color={colors.primary} />
+                </TouchableOpacity>
+              )}
+              <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>
+                {step === 'select' ? 'Añadir dispositivo' : DEVICE_CATEGORIAS.find(c => c.key === categoria)?.label || 'Dispositivo'}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity>
+          </View>
+
+          {step === 'select' ? (
+            <View style={{ padding: 20 }}>
+              <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 16 }}>Selecciona el tipo de dispositivo:</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                {DEVICE_CATEGORIAS.map(cat => (
+                  <TouchableOpacity
+                    key={cat.key}
+                    onPress={() => selectCategoria(cat.key)}
+                    style={{ width: '45%', paddingVertical: 18, alignItems: 'center', gap: 8, borderRadius: 12, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bg }}
+                  >
+                    <Ionicons name={cat.icon} size={28} color={colors.primary} />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{cat.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ) : (
+            <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+              {/* Nombre */}
+              <View style={{ marginBottom: 14 }}>
+                <Text style={lbl}>Nombre *</Text>
+                <TextInput style={inp} value={f('nombre')} onChangeText={v => setF('nombre', v)} placeholder="Nombre del dispositivo" placeholderTextColor={colors.textMuted} />
+              </View>
+              {/* Tipo con sugerencias */}
+              <View style={{ marginBottom: 14 }}>
+                <Text style={lbl}>Tipo</Text>
+                <TextInput style={{ ...inp, marginBottom: sugerencias.length ? 8 : 0 }} value={f('tipo')} onChangeText={v => setF('tipo', v)} placeholder="Selecciona o escribe..." placeholderTextColor={colors.textMuted} />
+                {sugerencias.length > 0 && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      {sugerencias.map(s => (
+                        <TouchableOpacity key={s} onPress={() => setF('tipo', s)}
+                          style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: f('tipo') === s ? colors.primary : colors.border, backgroundColor: f('tipo') === s ? colors.primaryBg : colors.bg }}>
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: f('tipo') === s ? colors.primary : colors.textMuted }}>{s}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
                 )}
-              </ScrollView>
-              {/* Done button */}
-              <TouchableOpacity
-                onPress={() => { setOpen(false); setQuery('') }}
-                style={{ margin: 12, paddingVertical: 12, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary }}
-              >
-                <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
-                  {selectedIds.length > 0 ? `Confirmar (${selectedIds.length})` : 'Cerrar'}
-                </Text>
+              </View>
+              {/* Campos por categoría */}
+              {categoria === 'equipo' && (<>
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={lbl}>Número de Serie *</Text>
+                  <TextInput style={inp} value={f('numero_serie')} onChangeText={v => setF('numero_serie', v)} placeholder="Ej: SN-2024-ABC123" placeholderTextColor={colors.textMuted} autoCapitalize="characters" />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>IP</Text>
+                    <TextInput style={inp} value={f('ip')} onChangeText={v => setF('ip', v)} placeholder="192.168.1.10" placeholderTextColor={colors.textMuted} keyboardType="decimal-pad" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>AnyDesk ID</Text>
+                    <TextInput style={inp} value={f('anydesk_id')} onChangeText={v => setF('anydesk_id', v)} placeholder="123456789" placeholderTextColor={colors.textMuted} keyboardType="numeric" />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>Usuario</Text>
+                    <TextInput style={inp} value={f('usuario')} onChangeText={v => setF('usuario', v)} placeholder="admin" placeholderTextColor={colors.textMuted} autoCapitalize="none" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>Contraseña</Text>
+                    <TextInput style={inp} value={f('password')} onChangeText={v => setF('password', v)} placeholder="••••••••" placeholderTextColor={colors.textMuted} autoCapitalize="none" />
+                  </View>
+                </View>
+              </>)}
+              {categoria === 'servidor' && (<>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>IP</Text>
+                    <TextInput style={inp} value={f('ip')} onChangeText={v => setF('ip', v)} placeholder="192.168.1.5" placeholderTextColor={colors.textMuted} keyboardType="decimal-pad" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>S.O.</Text>
+                    <TextInput style={inp} value={f('sistema_operativo')} onChangeText={v => setF('sistema_operativo', v)} placeholder="Windows Server 2022" placeholderTextColor={colors.textMuted} />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>Usuario</Text>
+                    <TextInput style={inp} value={f('usuario')} onChangeText={v => setF('usuario', v)} placeholder="admin" placeholderTextColor={colors.textMuted} autoCapitalize="none" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>Contraseña</Text>
+                    <TextInput style={inp} value={f('password')} onChangeText={v => setF('password', v)} placeholder="••••••••" placeholderTextColor={colors.textMuted} autoCapitalize="none" />
+                  </View>
+                </View>
+              </>)}
+              {categoria === 'nas' && (<>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>IP</Text>
+                    <TextInput style={inp} value={f('ip')} onChangeText={v => setF('ip', v)} placeholder="192.168.1.20" placeholderTextColor={colors.textMuted} keyboardType="decimal-pad" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>Capacidad</Text>
+                    <TextInput style={inp} value={f('capacidad')} onChangeText={v => setF('capacidad', v)} placeholder="4TB" placeholderTextColor={colors.textMuted} />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>Usuario</Text>
+                    <TextInput style={inp} value={f('usuario')} onChangeText={v => setF('usuario', v)} placeholder="admin" placeholderTextColor={colors.textMuted} autoCapitalize="none" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>Contraseña</Text>
+                    <TextInput style={inp} value={f('password')} onChangeText={v => setF('password', v)} placeholder="••••••••" placeholderTextColor={colors.textMuted} autoCapitalize="none" />
+                  </View>
+                </View>
+              </>)}
+              {categoria === 'red' && (<>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>IP</Text>
+                    <TextInput style={inp} value={f('ip')} onChangeText={v => setF('ip', v)} placeholder="192.168.1.1" placeholderTextColor={colors.textMuted} keyboardType="decimal-pad" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>Modelo</Text>
+                    <TextInput style={inp} value={f('modelo')} onChangeText={v => setF('modelo', v)} placeholder="Cisco RV340" placeholderTextColor={colors.textMuted} />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>Usuario</Text>
+                    <TextInput style={inp} value={f('usuario')} onChangeText={v => setF('usuario', v)} placeholder="admin" placeholderTextColor={colors.textMuted} autoCapitalize="none" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={lbl}>Contraseña</Text>
+                    <TextInput style={inp} value={f('password')} onChangeText={v => setF('password', v)} placeholder="••••••••" placeholderTextColor={colors.textMuted} autoCapitalize="none" />
+                  </View>
+                </View>
+              </>)}
+              {/* Campos personalizados */}
+              <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 4, paddingTop: 14, marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <Text style={lbl}>Campos personalizados</Text>
+                  <TouchableOpacity
+                    onPress={() => setExtraFields(prev => [...prev, { key: '', val: '' }])}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}
+                  >
+                    <Ionicons name="add" size={14} color={colors.primary} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Añadir</Text>
+                  </TouchableOpacity>
+                </View>
+                {extraFields.map((ef, i) => (
+                  <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                    <TextInput
+                      style={{ ...inp, flex: 1 }}
+                      value={ef.key}
+                      onChangeText={v => { const u = [...extraFields]; u[i] = { ...u[i], key: v }; setExtraFields(u) }}
+                      placeholder="Campo"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                    <TextInput
+                      style={{ ...inp, flex: 1 }}
+                      value={ef.val}
+                      onChangeText={v => { const u = [...extraFields]; u[i] = { ...u[i], val: v }; setExtraFields(u) }}
+                      placeholder="Valor"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                    <TouchableOpacity onPress={() => setExtraFields(prev => prev.filter((_, j) => j !== i))}
+                      style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: '#fee2e2', alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name="close" size={16} color="#b91c1c" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+
+          {step === 'form' && (
+            <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <TouchableOpacity style={{ flex: 1, paddingVertical: 13, alignItems: 'center', borderRadius: 8, borderWidth: 1.5, borderColor: colors.border }} onPress={onClose}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textMuted }}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={{ flex: 2, paddingVertical: 13, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }} onPress={handleSave} disabled={saving}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#ffffff' }}>{saving ? 'Guardando...' : 'Guardar dispositivo'}</Text>
               </TouchableOpacity>
             </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+          )}
+        </View>
     </View>
   )
 }
 
 // ─── NuevoTicketModal ─────────────────────────────────────────────────────────
 function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, colors }) {
+  const insets = useSafeAreaInsets()
   const [form, setForm] = useState({
     empresa_id: '', asunto: '', descripcion: '',
     prioridad: 'Media', estado: 'Pendiente',
@@ -334,6 +609,12 @@ function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, color
   const [selOperarios, setSelOperarios] = useState([])
   const [selDispositivos, setSelDispositivos] = useState([])
   const [dispositivos, setDispositivos] = useState([])
+  const [localContactos, setLocalContactos] = useState([])
+  const [dispSearch, setDispSearch] = useState('')
+  const [showCrearContacto, setShowCrearContacto] = useState(false)
+  const [showAñadirDisp, setShowAñadirDisp] = useState(false)
+  const [showEmpresaPicker, setShowEmpresaPicker] = useState(false)
+  const [empresaQuery, setEmpresaQuery] = useState('')
 
   useEffect(() => {
     if (visible) {
@@ -341,18 +622,25 @@ function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, color
       setSelOperarios([])
       setSelDispositivos([])
       setDispositivos([])
+      setLocalContactos([])
+      setDispSearch('')
     }
   }, [visible])
 
-  useEffect(() => {
-    setForm(f => ({ ...f, contacto_nombre: null, telefono_cliente: null }))
+  function onSelectEmpresa(id) {
+    const emp = empresas.find(e => e.id === id)
+    setLocalContactos((emp?.contactos || []).filter(c => c.nombre?.trim()))
+    setForm(f => ({ ...f, empresa_id: id, contacto_nombre: null, telefono_cliente: null }))
     setSelDispositivos([])
-    if (form.empresa_id) {
-      getDispositivos(form.empresa_id).then(data => setDispositivos((data || []).filter(d => d.categoria !== 'correo'))).catch(() => setDispositivos([]))
+    setDispSearch('')
+    if (id) {
+      getDispositivos(id)
+        .then(data => setDispositivos((data || []).filter(d => d.categoria !== 'correo')))
+        .catch(() => setDispositivos([]))
     } else {
       setDispositivos([])
     }
-  }, [form.empresa_id])
+  }
 
   function toggleDispositivo(id) {
     setSelDispositivos(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -368,6 +656,10 @@ function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, color
     onSave({ ...form, operarios: selOperarios, dispositivos_ids: selDispositivos })
   }
 
+  const filteredDisps = dispSearch.trim()
+    ? dispositivos.filter(d => d.nombre?.toLowerCase().includes(dispSearch.toLowerCase()) || (d.tipo || '').toLowerCase().includes(dispSearch.toLowerCase()))
+    : dispositivos
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: colors.overlay }}>
@@ -378,24 +670,36 @@ function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, color
           </View>
 
           <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
-            {/* Empresa — searchable select */}
-            <SearchableSelect
-              label="Empresa *"
-              placeholder="Seleccionar empresa..."
-              items={empresas}
-              selectedId={form.empresa_id}
-              onSelect={id => setForm(f => ({ ...f, empresa_id: id }))}
-              colors={colors}
-            />
+            {/* Empresa */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Empresa *</Text>
+              <TouchableOpacity
+                onPress={() => { setEmpresaQuery(''); setShowEmpresaPicker(true) }}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: form.empresa_id ? colors.primary : colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12 }}
+              >
+                <Text style={{ fontSize: 14, color: form.empresa_id ? colors.text : colors.textMuted, flex: 1 }} numberOfLines={1}>
+                  {form.empresa_id ? (empresas.find(e => e.id === form.empresa_id)?.nombre || 'Empresa seleccionada') : 'Seleccionar empresa...'}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
 
-            {/* Contacto de empresa */}
-            {form.empresa_id && (() => {
-              const emp = empresas.find(e => e.id === form.empresa_id)
-              const cts = (emp?.contactos || []).filter(c => c.nombre?.trim())
-              if (!cts.length) return null
-              return (
-                <View style={{ marginBottom: 14 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Contacto</Text>
+            {/* Contacto */}
+            {form.empresa_id && (
+              <View style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase' }}>Contacto</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowCrearContacto(true)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.primary }}
+                  >
+                    <Ionicons name="person-add-outline" size={13} color={colors.primary} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Crear contacto</Text>
+                  </TouchableOpacity>
+                </View>
+                {localContactos.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Esta empresa no tiene contactos registrados.</Text>
+                ) : (
                   <View style={{ gap: 6 }}>
                     <TouchableOpacity
                       onPress={() => setForm(f => ({ ...f, contacto_nombre: null, telefono_cliente: null }))}
@@ -403,7 +707,7 @@ function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, color
                     >
                       <Text style={{ fontSize: 13, fontWeight: '600', color: !form.contacto_nombre ? colors.primary : colors.textMuted }}>Sin contacto</Text>
                     </TouchableOpacity>
-                    {cts.map((c, i) => {
+                    {localContactos.map((c, i) => {
                       const sel = form.contacto_nombre === c.nombre
                       return (
                         <TouchableOpacity
@@ -412,9 +716,7 @@ function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, color
                           style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primaryBg : colors.bg }}
                         >
                           <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: sel ? colors.primary : colors.badgeGray, alignItems: 'center', justifyContent: 'center' }}>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#fff' : colors.textMuted }}>
-                              {(c.nombre || '?').charAt(0).toUpperCase()}
-                            </Text>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#fff' : colors.textMuted }}>{(c.nombre || '?').charAt(0).toUpperCase()}</Text>
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={{ fontSize: 13, fontWeight: '600', color: sel ? colors.primary : colors.text }}>{c.nombre}</Text>
@@ -430,34 +732,64 @@ function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, color
                       )
                     })}
                   </View>
-                </View>
-              )
-            })()}
+                )}
+              </View>
+            )}
 
-            {/* Dispositivos — checklist */}
-            {dispositivos.length > 0 && (
+            {/* Dispositivos */}
+            {form.empresa_id && (
               <View style={{ marginBottom: 14 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Equipos</Text>
-                <View style={{ gap: 6 }}>
-                  {dispositivos.map(d => {
-                    const sel = selDispositivos.includes(d.id)
-                    return (
-                      <TouchableOpacity
-                        key={d.id}
-                        onPress={() => toggleDispositivo(d.id)}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primaryBg : colors.bg }}
-                      >
-                        <View style={{ width: 18, height: 18, borderRadius: 4, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-                          {sel && <Ionicons name="checkmark" size={12} color="#fff" />}
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: sel ? colors.primary : colors.text }}>{d.nombre}</Text>
-                          {d.tipo ? <Text style={{ fontSize: 11, color: colors.textMuted }}>{d.tipo}</Text> : null}
-                        </View>
-                      </TouchableOpacity>
-                    )
-                  })}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase' }}>Equipos</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowAñadirDisp(true)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.primary }}
+                  >
+                    <Ionicons name="add-outline" size={13} color={colors.primary} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Añadir dispositivo</Text>
+                  </TouchableOpacity>
                 </View>
+                {dispositivos.length > 0 && (
+                  <TextInput
+                    style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: colors.text, marginBottom: 8 }}
+                    value={dispSearch}
+                    onChangeText={setDispSearch}
+                    placeholder="Buscar dispositivo..."
+                    placeholderTextColor={colors.textMuted}
+                  />
+                )}
+                {filteredDisps.length === 0 && dispositivos.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Esta empresa no tiene dispositivos registrados.</Text>
+                ) : filteredDisps.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Sin resultados</Text>
+                ) : (
+                  <View style={{ gap: 6 }}>
+                    {filteredDisps.map(d => {
+                      const sel = selDispositivos.includes(d.id)
+                      return (
+                        <TouchableOpacity
+                          key={d.id}
+                          onPress={() => toggleDispositivo(d.id)}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primaryBg : colors.bg }}
+                        >
+                          <View style={{ width: 18, height: 18, borderRadius: 4, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                            {sel && <Ionicons name="checkmark" size={12} color="#fff" />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: sel ? colors.primary : colors.text }}>{d.nombre}</Text>
+                            {d.tipo ? <Text style={{ fontSize: 11, color: colors.textMuted }}>{d.tipo}</Text> : null}
+                          </View>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                )}
+                {selDispositivos.length > 0 && (
+                  <TouchableOpacity onPress={() => setSelDispositivos([])} style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="close-circle-outline" size={14} color={colors.textMuted} />
+                    <Text style={{ fontSize: 12, color: colors.textMuted }}>{selDispositivos.length} seleccionado{selDispositivos.length > 1 ? 's' : ''} · Limpiar</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
 
@@ -518,7 +850,7 @@ function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, color
               </View>
             </View>
 
-            {/* Operarios — searchable multi-select */}
+            {/* Operarios */}
             {operarios.length > 0 && (
               <SearchableMultiSelect
                 label="Operarios asignados"
@@ -541,11 +873,484 @@ function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, color
           </View>
         </View>
       </View>
+
+      <CrearContactoModal
+        visible={showCrearContacto}
+        empresaId={form.empresa_id}
+        empresas={empresas}
+        onClose={() => setShowCrearContacto(false)}
+        onSaved={(newContact, allContacts) => {
+          setLocalContactos(allContacts.filter(c => c.nombre?.trim()))
+          setForm(f => ({ ...f, contacto_nombre: newContact.nombre, telefono_cliente: newContact.telefono || null }))
+          setShowCrearContacto(false)
+        }}
+        colors={colors}
+      />
+      <AñadirDispositivoModal
+        visible={showAñadirDisp}
+        empresaId={form.empresa_id}
+        onClose={() => setShowAñadirDisp(false)}
+        onSaved={newDevice => {
+          setDispositivos(prev => [...prev, newDevice])
+          setSelDispositivos(prev => [...prev, newDevice.id])
+          setShowAñadirDisp(false)
+        }}
+        colors={colors}
+      />
+
+      {/* Empresa picker — inline overlay dentro del mismo Modal */}
+      {showEmpresaPicker && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.bg, paddingTop: insets.top }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.headerBg }}>
+              <TouchableOpacity onPress={() => setShowEmpresaPicker(false)} style={{ padding: 4 }}>
+                <Ionicons name="arrow-back" size={22} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, flex: 1 }}>Seleccionar empresa</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 14, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: colors.inputBorder, backgroundColor: colors.inputBg }}>
+              <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+              <TextInput style={{ flex: 1, fontSize: 14, color: colors.text }} placeholder="Buscar empresa..." placeholderTextColor={colors.textMuted} value={empresaQuery} onChangeText={setEmpresaQuery} autoFocus />
+              {empresaQuery ? <TouchableOpacity onPress={() => setEmpresaQuery('')}><Ionicons name="close-circle" size={16} color={colors.textMuted} /></TouchableOpacity> : null}
+            </View>
+            <FlatList
+              data={empresas.filter(e => !empresaQuery.trim() || e.nombre?.toLowerCase().includes(empresaQuery.toLowerCase()))}
+              keyExtractor={item => item.id}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => {
+                const sel = item.id === form.empresa_id
+                return (
+                  <TouchableOpacity
+                    onPress={() => { onSelectEmpresa(item.id); setShowEmpresaPicker(false) }}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: sel ? colors.primaryBg : 'transparent' }}
+                  >
+                    <Text style={{ flex: 1, fontSize: 15, color: sel ? colors.primary : colors.text, fontWeight: sel ? '700' : '400' }}>{item.nombre}</Text>
+                    {sel && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                  </TouchableOpacity>
+                )
+              }}
+              ListEmptyComponent={<View style={{ paddingTop: 40, alignItems: 'center' }}><Text style={{ color: colors.textMuted }}>Sin resultados</Text></View>}
+            />
+        </View>
+      )}
     </Modal>
   )
 }
 
-function TicketCard({ ticket, onPress, onDelete, colors }) {
+// ─── EditarTicketModal ────────────────────────────────────────────────────────
+function EditarTicketModal({ visible, ticket, empresas, operarios, onClose, onSave, colors }) {
+  const insets = useSafeAreaInsets()
+  const [form, setForm] = useState({
+    empresa_id: '', asunto: '', descripcion: '',
+    prioridad: 'Media', estado: 'Pendiente',
+    contacto_nombre: null, telefono_cliente: null,
+  })
+  const [selOperarios, setSelOperarios] = useState([])
+  const [selDispositivos, setSelDispositivos] = useState([])
+  const [dispositivos, setDispositivos] = useState([])
+  const [localContactos, setLocalContactos] = useState([])
+  const [dispSearch, setDispSearch] = useState('')
+  const [showCrearContacto, setShowCrearContacto] = useState(false)
+  const [showAñadirDisp, setShowAñadirDisp] = useState(false)
+  const [showEmpresaPicker, setShowEmpresaPicker] = useState(false)
+  const [empresaQuery, setEmpresaQuery] = useState('')
+
+  useEffect(() => {
+    if (visible && ticket) {
+      const dispIds = ticket.dispositivos_ids?.length
+        ? ticket.dispositivos_ids
+        : (ticket.dispositivo_id ? [ticket.dispositivo_id] : [])
+      setForm({
+        empresa_id: ticket.empresa_id || '',
+        asunto: ticket.asunto || '',
+        descripcion: ticket.descripcion || '',
+        prioridad: ticket.prioridad || 'Media',
+        estado: ticket.estado || 'Pendiente',
+        contacto_nombre: ticket.contacto_nombre || null,
+        telefono_cliente: ticket.telefono_cliente || null,
+      })
+      setSelOperarios((ticket.ticket_asignaciones || []).map(a => a.user_id))
+      setSelDispositivos(dispIds)
+      setDispSearch('')
+      const emp = empresas.find(e => e.id === ticket.empresa_id)
+      setLocalContactos((emp?.contactos || []).filter(c => c.nombre?.trim()))
+      if (ticket.empresa_id) {
+        getDispositivos(ticket.empresa_id)
+          .then(data => setDispositivos((data || []).filter(d => d.categoria !== 'correo')))
+          .catch(() => setDispositivos([]))
+      } else {
+        setDispositivos([])
+      }
+    }
+  }, [visible, ticket])
+
+  function onChangeEmpresa(id) {
+    const emp = empresas.find(e => e.id === id)
+    setLocalContactos((emp?.contactos || []).filter(c => c.nombre?.trim()))
+    setForm(f => ({ ...f, empresa_id: id, contacto_nombre: null, telefono_cliente: null }))
+    setSelDispositivos([])
+    setDispSearch('')
+    if (id) {
+      getDispositivos(id)
+        .then(data => setDispositivos((data || []).filter(d => d.categoria !== 'correo')))
+        .catch(() => setDispositivos([]))
+    } else {
+      setDispositivos([])
+    }
+  }
+
+  function toggleDispositivo(id) {
+    setSelDispositivos(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function toggleOperario(id) {
+    setSelOperarios(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function handleSave() {
+    if (!form.empresa_id) { Alert.alert('Error', 'Selecciona una empresa'); return }
+    if (!form.asunto.trim()) { Alert.alert('Error', 'El asunto es obligatorio'); return }
+    onSave(ticket, { ...form, operarios: selOperarios, dispositivos_ids: selDispositivos })
+  }
+
+  const filteredDisps = dispSearch.trim()
+    ? dispositivos.filter(d => d.nombre?.toLowerCase().includes(dispSearch.toLowerCase()) || (d.tipo || '').toLowerCase().includes(dispSearch.toLowerCase()))
+    : dispositivos
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: colors.overlay }}>
+        <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '92%', paddingBottom: 24 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>Editar ticket</Text>
+            <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+            {/* Empresa */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Empresa *</Text>
+              <TouchableOpacity
+                onPress={() => { setEmpresaQuery(''); setShowEmpresaPicker(true) }}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: form.empresa_id ? colors.primary : colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12 }}
+              >
+                <Text style={{ fontSize: 14, color: form.empresa_id ? colors.text : colors.textMuted, flex: 1 }} numberOfLines={1}>
+                  {form.empresa_id ? (empresas.find(e => e.id === form.empresa_id)?.nombre || 'Empresa seleccionada') : 'Seleccionar empresa...'}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Contacto */}
+            {form.empresa_id && (
+              <View style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase' }}>Contacto</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowCrearContacto(true)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.primary }}
+                  >
+                    <Ionicons name="person-add-outline" size={13} color={colors.primary} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Crear contacto</Text>
+                  </TouchableOpacity>
+                </View>
+                {localContactos.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Esta empresa no tiene contactos registrados.</Text>
+                ) : (
+                  <View style={{ gap: 6 }}>
+                    <TouchableOpacity
+                      onPress={() => setForm(f => ({ ...f, contacto_nombre: null, telefono_cliente: null }))}
+                      style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 8, borderWidth: 1.5, borderColor: !form.contacto_nombre ? colors.primary : colors.border, backgroundColor: !form.contacto_nombre ? colors.primaryBg : colors.bg }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: !form.contacto_nombre ? colors.primary : colors.textMuted }}>Sin contacto</Text>
+                    </TouchableOpacity>
+                    {localContactos.map((c, i) => {
+                      const sel = form.contacto_nombre === c.nombre
+                      return (
+                        <TouchableOpacity
+                          key={i}
+                          onPress={() => setForm(f => ({ ...f, contacto_nombre: c.nombre, telefono_cliente: c.telefono || null }))}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primaryBg : colors.bg }}
+                        >
+                          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: sel ? colors.primary : colors.badgeGray, alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#fff' : colors.textMuted }}>{(c.nombre || '?').charAt(0).toUpperCase()}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: sel ? colors.primary : colors.text }}>{c.nombre}</Text>
+                            {c.cargo ? <Text style={{ fontSize: 11, color: colors.textMuted }}>{c.cargo}</Text> : null}
+                          </View>
+                          {c.telefono ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Ionicons name="call-outline" size={12} color={sel ? colors.primary : colors.textMuted} />
+                              <Text style={{ fontSize: 12, color: sel ? colors.primary : colors.textMuted }}>{c.telefono}</Text>
+                            </View>
+                          ) : null}
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Dispositivos */}
+            {form.empresa_id && (
+              <View style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase' }}>Equipos</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowAñadirDisp(true)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.primary }}
+                  >
+                    <Ionicons name="add-outline" size={13} color={colors.primary} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Añadir dispositivo</Text>
+                  </TouchableOpacity>
+                </View>
+                {dispositivos.length > 0 && (
+                  <TextInput
+                    style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: colors.text, marginBottom: 8 }}
+                    value={dispSearch}
+                    onChangeText={setDispSearch}
+                    placeholder="Buscar dispositivo..."
+                    placeholderTextColor={colors.textMuted}
+                  />
+                )}
+                {filteredDisps.length === 0 && dispositivos.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Esta empresa no tiene dispositivos registrados.</Text>
+                ) : filteredDisps.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Sin resultados</Text>
+                ) : (
+                  <View style={{ gap: 6 }}>
+                    {filteredDisps.map(d => {
+                      const sel = selDispositivos.includes(d.id)
+                      return (
+                        <TouchableOpacity
+                          key={d.id}
+                          onPress={() => toggleDispositivo(d.id)}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primaryBg : colors.bg }}
+                        >
+                          <View style={{ width: 18, height: 18, borderRadius: 4, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                            {sel && <Ionicons name="checkmark" size={12} color="#fff" />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: sel ? colors.primary : colors.text }}>{d.nombre}</Text>
+                            {d.tipo ? <Text style={{ fontSize: 11, color: colors.textMuted }}>{d.tipo}</Text> : null}
+                          </View>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                )}
+                {selDispositivos.length > 0 && (
+                  <TouchableOpacity onPress={() => setSelDispositivos([])} style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="close-circle-outline" size={14} color={colors.textMuted} />
+                    <Text style={{ fontSize: 12, color: colors.textMuted }}>{selDispositivos.length} seleccionado{selDispositivos.length > 1 ? 's' : ''} · Limpiar</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {/* Asunto */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Asunto *</Text>
+              <TextInput
+                style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
+                value={form.asunto}
+                onChangeText={v => setForm(f => ({ ...f, asunto: v }))}
+                placeholderTextColor={colors.textMuted}
+              />
+            </View>
+
+            {/* Descripcion */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Descripción</Text>
+              <TextInput
+                style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text, height: 80, textAlignVertical: 'top', paddingTop: 10 }}
+                value={form.descripcion}
+                onChangeText={v => setForm(f => ({ ...f, descripcion: v }))}
+                placeholderTextColor={colors.textMuted}
+                multiline
+              />
+            </View>
+
+            {/* Prioridad */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Prioridad</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {PRIORIDADES.map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    style={{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8, borderWidth: 1.5, borderColor: form.prioridad === p ? colors.primary : colors.border, backgroundColor: form.prioridad === p ? colors.primaryBg : colors.bg }}
+                    onPress={() => setForm(f => ({ ...f, prioridad: p }))}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: form.prioridad === p ? colors.primary : colors.textMuted }}>{p}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Estado */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Estado</Text>
+              <View style={{ gap: 6 }}>
+                {ESTADOS.map(e => (
+                  <TouchableOpacity
+                    key={e}
+                    style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 8, borderWidth: 1.5, borderColor: form.estado === e ? colors.primary : colors.border, backgroundColor: form.estado === e ? colors.primaryBg : colors.bg }}
+                    onPress={() => setForm(f => ({ ...f, estado: e }))}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: form.estado === e ? colors.primary : colors.text }}>{e}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Operarios */}
+            {operarios.length > 0 && (
+              <SearchableMultiSelect
+                label="Operarios asignados"
+                placeholder="Seleccionar operarios..."
+                items={operarios}
+                selectedIds={selOperarios}
+                onToggle={toggleOperario}
+                colors={colors}
+              />
+            )}
+          </ScrollView>
+
+          <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <TouchableOpacity style={{ flex: 1, paddingVertical: 13, alignItems: 'center', borderRadius: 8, borderWidth: 1.5, borderColor: colors.border }} onPress={onClose}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textMuted }}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ flex: 2, paddingVertical: 13, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary }} onPress={handleSave}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#ffffff' }}>Guardar cambios</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      <CrearContactoModal
+        visible={showCrearContacto}
+        empresaId={form.empresa_id}
+        empresas={empresas}
+        onClose={() => setShowCrearContacto(false)}
+        onSaved={(newContact, allContacts) => {
+          setLocalContactos(allContacts.filter(c => c.nombre?.trim()))
+          setForm(f => ({ ...f, contacto_nombre: newContact.nombre, telefono_cliente: newContact.telefono || null }))
+          setShowCrearContacto(false)
+        }}
+        colors={colors}
+      />
+      <AñadirDispositivoModal
+        visible={showAñadirDisp}
+        empresaId={form.empresa_id}
+        onClose={() => setShowAñadirDisp(false)}
+        onSaved={newDevice => {
+          setDispositivos(prev => [...prev, newDevice])
+          setSelDispositivos(prev => [...prev, newDevice.id])
+          setShowAñadirDisp(false)
+        }}
+        colors={colors}
+      />
+
+      {/* Empresa picker — inline overlay dentro del mismo Modal */}
+      {showEmpresaPicker && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.bg, paddingTop: insets.top }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.headerBg }}>
+              <TouchableOpacity onPress={() => setShowEmpresaPicker(false)} style={{ padding: 4 }}>
+                <Ionicons name="arrow-back" size={22} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, flex: 1 }}>Seleccionar empresa</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 14, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: colors.inputBorder, backgroundColor: colors.inputBg }}>
+              <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+              <TextInput style={{ flex: 1, fontSize: 14, color: colors.text }} placeholder="Buscar empresa..." placeholderTextColor={colors.textMuted} value={empresaQuery} onChangeText={setEmpresaQuery} autoFocus />
+              {empresaQuery ? <TouchableOpacity onPress={() => setEmpresaQuery('')}><Ionicons name="close-circle" size={16} color={colors.textMuted} /></TouchableOpacity> : null}
+            </View>
+            <FlatList
+              data={empresas.filter(e => !empresaQuery.trim() || e.nombre?.toLowerCase().includes(empresaQuery.toLowerCase()))}
+              keyExtractor={item => item.id}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => {
+                const sel = item.id === form.empresa_id
+                return (
+                  <TouchableOpacity
+                    onPress={() => { onChangeEmpresa(item.id); setShowEmpresaPicker(false) }}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: sel ? colors.primaryBg : 'transparent' }}
+                  >
+                    <Text style={{ flex: 1, fontSize: 15, color: sel ? colors.primary : colors.text, fontWeight: sel ? '700' : '400' }}>{item.nombre}</Text>
+                    {sel && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                  </TouchableOpacity>
+                )
+              }}
+              ListEmptyComponent={<View style={{ paddingTop: 40, alignItems: 'center' }}><Text style={{ color: colors.textMuted }}>Sin resultados</Text></View>}
+            />
+        </View>
+      )}
+    </Modal>
+  )
+}
+
+function EmpresaPickerModal({ visible, empresas, selectedId, onSelect, onClose, colors }) {
+  const [query, setQuery] = useState('')
+
+  useEffect(() => { if (visible) setQuery('') }, [visible])
+
+  const filtered = query.trim()
+    ? empresas.filter(e => e.nombre?.toLowerCase().includes(query.toLowerCase()))
+    : empresas
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.headerBg }}>
+          <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
+            <Ionicons name="arrow-back" size={22} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, flex: 1 }}>Seleccionar empresa</Text>
+        </View>
+        {/* Search */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 14, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: colors.inputBorder, backgroundColor: colors.inputBg }}>
+          <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+          <TextInput
+            style={{ flex: 1, fontSize: 14, color: colors.text }}
+            placeholder="Buscar empresa..."
+            placeholderTextColor={colors.textMuted}
+            value={query}
+            onChangeText={setQuery}
+            autoFocus
+          />
+          {query ? <TouchableOpacity onPress={() => setQuery('')}><Ionicons name="close-circle" size={16} color={colors.textMuted} /></TouchableOpacity> : null}
+        </View>
+        {/* List */}
+        <FlatList
+          data={filtered}
+          keyExtractor={item => item.id}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => {
+            const sel = item.id === selectedId
+            return (
+              <TouchableOpacity
+                onPress={() => { onSelect(item.id); onClose() }}
+                style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: sel ? colors.primaryBg : 'transparent' }}
+              >
+                <Text style={{ flex: 1, fontSize: 15, color: sel ? colors.primary : colors.text, fontWeight: sel ? '700' : '400' }}>{item.nombre}</Text>
+                {sel && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+              </TouchableOpacity>
+            )
+          }}
+          ListEmptyComponent={
+            <View style={{ paddingTop: 40, alignItems: 'center' }}>
+              <Text style={{ color: colors.textMuted, fontSize: 14 }}>Sin resultados</Text>
+            </View>
+          }
+        />
+      </View>
+    </Modal>
+  )
+}
+
+function TicketCard({ ticket, onPress, onEdit, onDelete, colors }) {
   return (
     <TouchableOpacity
       style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, marginBottom: 10 }}
@@ -586,6 +1391,9 @@ function TicketCard({ ticket, onPress, onDelete, colors }) {
               ))}
             </View>
           )}
+          <TouchableOpacity onPress={() => onEdit(ticket)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+            <Ionicons name="create-outline" size={14} color={colors.primary} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => onDelete(ticket)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
             <Ionicons name="trash-outline" size={14} color={colors.danger} />
           </TouchableOpacity>
@@ -609,6 +1417,8 @@ export default function TicketsScreen({ navigation }) {
   const [filterPrioridad, setFilterPrioridad] = useState('')
   const [showFilters, setShowFilters]       = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingTicket, setEditingTicket] = useState(null)
   const [page, setPage]           = useState(1)
   const [mostrarCerrados, setMostrarCerrados] = useState(false)
   const [filterOperario, setFilterOperario] = useState('all')
@@ -708,6 +1518,32 @@ export default function TicketsScreen({ navigation }) {
     try {
       await createTicket(form)
       setShowModal(false)
+      await load()
+    } catch (e) { Alert.alert('Error', e.message) }
+  }
+
+  async function handleEdit(ticket, form) {
+    try {
+      await updateTicket(ticket.id, {
+        empresa_id: form.empresa_id,
+        asunto: form.asunto.trim(),
+        descripcion: form.descripcion.trim() || null,
+        prioridad: form.prioridad,
+        estado: form.estado,
+        dispositivo_id: form.dispositivos_ids?.[0] || null,
+        dispositivos_ids: form.dispositivos_ids || [],
+        contacto_nombre: form.contacto_nombre || null,
+        telefono_cliente: form.telefono_cliente || null,
+      })
+      const prevOps = (ticket.ticket_asignaciones || []).map(a => a.user_id)
+      if (form.operarios.length > 0) {
+        await assignOperarios(ticket.id, form.operarios)
+      }
+      for (const uid of prevOps.filter(id => !form.operarios.includes(id))) {
+        await removeOperario(ticket.id, uid)
+      }
+      setShowEditModal(false)
+      setEditingTicket(null)
       await load()
     } catch (e) { Alert.alert('Error', e.message) }
   }
@@ -905,6 +1741,7 @@ export default function TicketsScreen({ navigation }) {
               ticket={item}
               colors={colors}
               onPress={() => navigation.navigate('TicketDetalle', { ticket: item })}
+              onEdit={t => { setEditingTicket(t); setShowEditModal(true) }}
               onDelete={handleDelete}
             />
           )}
@@ -926,6 +1763,7 @@ export default function TicketsScreen({ navigation }) {
               ticket={item}
               colors={colors}
               onPress={() => navigation.navigate('TicketDetalle', { ticket: item })}
+              onEdit={t => { setEditingTicket(t); setShowEditModal(true) }}
               onDelete={handleDelete}
             />
           )}
@@ -956,6 +1794,15 @@ export default function TicketsScreen({ navigation }) {
         operarios={operarios}
         onClose={() => setShowModal(false)}
         onSave={handleCreate}
+        colors={colors}
+      />
+      <EditarTicketModal
+        visible={showEditModal}
+        ticket={editingTicket}
+        empresas={empresas}
+        operarios={operarios}
+        onClose={() => { setShowEditModal(false); setEditingTicket(null) }}
+        onSave={handleEdit}
         colors={colors}
       />
 

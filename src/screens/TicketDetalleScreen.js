@@ -15,10 +15,25 @@ import {
   assignOperarios, removeOperario,
   getOperarios, getEmpresas, getDispositivos, getArchivoUrl, deleteArchivo,
   updateTicketNotas, uploadTicketArchivos,
+  updateEmpresa, createDispositivo,
 } from '../services/api'
 
 const ESTADOS    = ['Pendiente', 'En curso', 'Completado', 'Pendiente de facturar', 'Facturado']
 const PRIORIDADES = ['Baja', 'Media', 'Alta', 'Urgente']
+const DEVICE_CATEGORIAS = [
+  { key: 'equipo',   label: 'Equipos',    icon: 'desktop-outline' },
+  { key: 'servidor', label: 'Servidores', icon: 'server-outline' },
+  { key: 'nas',      label: 'NAS',        icon: 'save-outline' },
+  { key: 'red',      label: 'Redes',      icon: 'wifi-outline' },
+  { key: 'web',      label: 'Web',        icon: 'globe-outline' },
+]
+const DEVICE_TIPO_SUGERENCIAS = {
+  equipo:   ['PC', 'Portátil', 'Cámara de Seguridad', 'Impresora', 'Tablet', 'All-in-One'],
+  servidor: ['Servidor Físico', 'Servidor Virtual', 'Servidor de Archivos'],
+  nas:      ['NAS Synology', 'NAS QNAP'],
+  red:      ['Router', 'Switch', 'Access Point', 'Firewall', 'Modem'],
+  web:      ['Web corporativa', 'Tienda online', 'Portal', 'Aplicación web'],
+}
 
 const AVATAR_COLORS = ['#0066ff', '#16a34a', '#d97706', '#dc2626', '#9333ea', '#0891b2', '#be185d', '#065f46']
 function getAvatarColor(str) {
@@ -76,6 +91,7 @@ export default function TicketDetalleScreen({ route, navigation }) {
   const [loading, setLoading]         = useState(true)
   const [comentarios, setComentarios] = useState([])
   const [operarios, setOperarios]     = useState([])
+  const [empresas, setEmpresas]       = useState([])
   const [activeTab, setActiveTab]     = useState('comentarios')
   const [newComment, setNewComment]   = useState('')
   const [sendingComment, setSendingComment] = useState(false)
@@ -96,15 +112,17 @@ export default function TicketDetalleScreen({ route, navigation }) {
 
   const loadAll = useCallback(async () => {
     try {
-      const [t, c, o] = await Promise.all([
+      const [t, c, o, emps] = await Promise.all([
         getTicket(initialTicket.id),
         getTicketComentarios(initialTicket.id),
         getOperarios(),
+        getEmpresas(),
       ])
       setTicket(t)
       setNotasValue(t.notas || '')
       setComentarios(Array.isArray(c) ? c : [])
       setOperarios(Array.isArray(o) ? o : [])
+      setEmpresas(Array.isArray(emps) ? emps : (emps?.empresas || []))
     } catch (e) { Alert.alert('Error', e.message) }
   }, [initialTicket.id])
 
@@ -627,6 +645,7 @@ export default function TicketDetalleScreen({ route, navigation }) {
         visible={showEditModal}
         ticket={ticket}
         operarios={operarios}
+        empresas={empresas}
         onClose={() => setShowEditModal(false)}
         onSave={handleEditSave}
         colors={colors}
@@ -667,6 +686,226 @@ export default function TicketDetalleScreen({ route, navigation }) {
   )
 }
 
+// ── CrearContactoModal ────────────────────────────────────────────────────────
+function CrearContactoModal({ visible, empresaId, empresas, onClose, onSaved, colors }) {
+  const [nombre, setNombre] = useState('')
+  const [telefono, setTelefono] = useState('')
+  const [email, setEmail] = useState('')
+  const [cargo, setCargo] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (visible) { setNombre(''); setTelefono(''); setEmail(''); setCargo('') }
+  }, [visible])
+
+  async function handleSave() {
+    if (!nombre.trim()) { Alert.alert('Error', 'El nombre es obligatorio'); return }
+    setSaving(true)
+    try {
+      const empresa = (Array.isArray(empresas) ? empresas : []).find(e => e.id === empresaId)
+      const newContact = { nombre: nombre.trim(), telefono: telefono.trim() || null, email: email.trim() || null, cargo: cargo.trim() || null }
+      const nuevosContactos = [...(empresa?.contactos || []), newContact]
+      await updateEmpresa(empresaId, { ...empresa, contactos: nuevosContactos })
+      onSaved(newContact, nuevosContactos)
+    } catch (e) { Alert.alert('Error', e.message) }
+    finally { setSaving(false) }
+  }
+
+  const inp = { backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }
+  const lbl = { fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }
+
+  if (!visible) return null
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end', backgroundColor: colors.overlay, zIndex: 999 }}>
+      <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%', paddingBottom: 24 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>Nuevo contacto</Text>
+          <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity>
+        </View>
+        <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+          <View style={{ marginBottom: 14 }}><Text style={lbl}>Nombre *</Text><TextInput style={inp} value={nombre} onChangeText={setNombre} placeholder="Nombre del contacto" placeholderTextColor={colors.textMuted} /></View>
+          <View style={{ marginBottom: 14 }}><Text style={lbl}>Teléfono</Text><TextInput style={inp} value={telefono} onChangeText={setTelefono} placeholder="612 345 678" placeholderTextColor={colors.textMuted} keyboardType="phone-pad" /></View>
+          <View style={{ marginBottom: 14 }}><Text style={lbl}>Email</Text><TextInput style={inp} value={email} onChangeText={setEmail} placeholder="contacto@empresa.com" placeholderTextColor={colors.textMuted} keyboardType="email-address" autoCapitalize="none" /></View>
+          <View style={{ marginBottom: 14 }}><Text style={lbl}>Cargo</Text><TextInput style={inp} value={cargo} onChangeText={setCargo} placeholder="Ej: Responsable IT, Gerente..." placeholderTextColor={colors.textMuted} /></View>
+        </ScrollView>
+        <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <TouchableOpacity style={{ flex: 1, paddingVertical: 13, alignItems: 'center', borderRadius: 8, borderWidth: 1.5, borderColor: colors.border }} onPress={onClose}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textMuted }}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={{ flex: 2, paddingVertical: 13, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }} onPress={handleSave} disabled={saving}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: '#ffffff' }}>{saving ? 'Guardando...' : 'Guardar contacto'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  )
+}
+
+// ── AñadirDispositivoModal ────────────────────────────────────────────────────
+function AñadirDispositivoModal({ visible, empresaId, onClose, onSaved, colors }) {
+  const [step, setStep] = useState('select')
+  const [categoria, setCategoria] = useState('')
+  const [form, setForm] = useState({})
+  const [extraFields, setExtraFields] = useState([])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (visible) { setStep('select'); setCategoria(''); setForm({}); setExtraFields([]) }
+  }, [visible])
+
+  function f(key) { return form[key] || '' }
+  function setF(key, val) { setForm(prev => ({ ...prev, [key]: val })) }
+
+  async function handleSave() {
+    if (!f('nombre').trim()) { Alert.alert('Error', 'El nombre es obligatorio'); return }
+    if (categoria === 'equipo' && !f('numero_serie').trim()) { Alert.alert('Error', 'El número de serie es obligatorio'); return }
+    const campos_extra = {}
+    extraFields.forEach(({ key, val }) => { if (key.trim()) campos_extra[key.trim()] = val })
+    setSaving(true)
+    try {
+      const payload = { ...form, empresa_id: empresaId, categoria, campos_extra }
+      const newDevice = await createDispositivo(payload)
+      onSaved(newDevice)
+    } catch (e) { Alert.alert('Error', e.message) }
+    finally { setSaving(false) }
+  }
+
+  const inp = { backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }
+  const lbl = { fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }
+  const sugerencias = DEVICE_TIPO_SUGERENCIAS[categoria] || []
+
+  if (!visible) return null
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end', backgroundColor: colors.overlay, zIndex: 999 }}>
+      <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%', paddingBottom: 24 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {step === 'form' && <TouchableOpacity onPress={() => setStep('select')}><Ionicons name="arrow-back" size={22} color={colors.primary} /></TouchableOpacity>}
+            <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>{step === 'select' ? 'Añadir dispositivo' : DEVICE_CATEGORIAS.find(c => c.key === categoria)?.label || 'Dispositivo'}</Text>
+          </View>
+          <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity>
+        </View>
+        {step === 'select' ? (
+          <View style={{ padding: 20 }}>
+            <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 16 }}>Selecciona el tipo de dispositivo:</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+              {DEVICE_CATEGORIAS.map(cat => (
+                <TouchableOpacity key={cat.key} onPress={() => { setCategoria(cat.key); setForm({}); setExtraFields([]); setStep('form') }} style={{ width: '45%', paddingVertical: 18, alignItems: 'center', gap: 8, borderRadius: 12, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bg }}>
+                  <Ionicons name={cat.icon} size={28} color={colors.primary} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{cat.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ) : (
+          <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+            <View style={{ marginBottom: 14 }}><Text style={lbl}>Nombre *</Text><TextInput style={inp} value={f('nombre')} onChangeText={v => setF('nombre', v)} placeholder="Nombre del dispositivo" placeholderTextColor={colors.textMuted} /></View>
+            <View style={{ marginBottom: 14 }}>
+              <Text style={lbl}>Tipo</Text>
+              <TextInput style={{ ...inp, marginBottom: sugerencias.length ? 8 : 0 }} value={f('tipo')} onChangeText={v => setF('tipo', v)} placeholder="Selecciona o escribe..." placeholderTextColor={colors.textMuted} />
+              {sugerencias.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {sugerencias.map(s => (
+                      <TouchableOpacity key={s} onPress={() => setF('tipo', s)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: f('tipo') === s ? colors.primary : colors.border, backgroundColor: f('tipo') === s ? colors.primaryBg : colors.bg }}>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: f('tipo') === s ? colors.primary : colors.textMuted }}>{s}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              )}
+            </View>
+            {categoria === 'equipo' && (<>
+              <View style={{ marginBottom: 14 }}><Text style={lbl}>Número de Serie *</Text><TextInput style={inp} value={f('numero_serie')} onChangeText={v => setF('numero_serie', v)} placeholder="Ej: SN-2024-ABC123" placeholderTextColor={colors.textMuted} autoCapitalize="characters" /></View>
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                <View style={{ flex: 1 }}><Text style={lbl}>IP</Text><TextInput style={inp} value={f('ip')} onChangeText={v => setF('ip', v)} placeholder="192.168.1.10" placeholderTextColor={colors.textMuted} keyboardType="decimal-pad" /></View>
+                <View style={{ flex: 1 }}><Text style={lbl}>AnyDesk ID</Text><TextInput style={inp} value={f('anydesk_id')} onChangeText={v => setF('anydesk_id', v)} placeholder="123456789" placeholderTextColor={colors.textMuted} keyboardType="numeric" /></View>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                <View style={{ flex: 1 }}><Text style={lbl}>Usuario</Text><TextInput style={inp} value={f('usuario')} onChangeText={v => setF('usuario', v)} placeholder="admin" placeholderTextColor={colors.textMuted} autoCapitalize="none" /></View>
+                <View style={{ flex: 1 }}><Text style={lbl}>Contraseña</Text><TextInput style={inp} value={f('password')} onChangeText={v => setF('password', v)} placeholder="••••••••" placeholderTextColor={colors.textMuted} autoCapitalize="none" /></View>
+              </View>
+            </>)}
+            {categoria === 'servidor' && (
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                <View style={{ flex: 1 }}><Text style={lbl}>IP</Text><TextInput style={inp} value={f('ip')} onChangeText={v => setF('ip', v)} placeholder="192.168.1.5" placeholderTextColor={colors.textMuted} keyboardType="decimal-pad" /></View>
+                <View style={{ flex: 1 }}><Text style={lbl}>Usuario</Text><TextInput style={inp} value={f('usuario')} onChangeText={v => setF('usuario', v)} placeholder="admin" placeholderTextColor={colors.textMuted} autoCapitalize="none" /></View>
+              </View>
+            )}
+            <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 4, paddingTop: 14, marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <Text style={lbl}>Campos personalizados</Text>
+                <TouchableOpacity onPress={() => setExtraFields(prev => [...prev, { key: '', val: '' }])} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}>
+                  <Ionicons name="add" size={14} color={colors.primary} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Añadir</Text>
+                </TouchableOpacity>
+              </View>
+              {extraFields.map((ef, i) => (
+                <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                  <TextInput style={{ ...inp, flex: 1 }} value={ef.key} onChangeText={v => { const u = [...extraFields]; u[i] = { ...u[i], key: v }; setExtraFields(u) }} placeholder="Campo" placeholderTextColor={colors.textMuted} />
+                  <TextInput style={{ ...inp, flex: 1 }} value={ef.val} onChangeText={v => { const u = [...extraFields]; u[i] = { ...u[i], val: v }; setExtraFields(u) }} placeholder="Valor" placeholderTextColor={colors.textMuted} />
+                  <TouchableOpacity onPress={() => setExtraFields(prev => prev.filter((_, j) => j !== i))} style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: '#fee2e2', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="close" size={16} color="#b91c1c" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        )}
+        {step === 'form' && (
+          <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <TouchableOpacity style={{ flex: 1, paddingVertical: 13, alignItems: 'center', borderRadius: 8, borderWidth: 1.5, borderColor: colors.border }} onPress={onClose}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textMuted }}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ flex: 2, paddingVertical: 13, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }} onPress={handleSave} disabled={saving}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#ffffff' }}>{saving ? 'Guardando...' : 'Guardar dispositivo'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    </View>
+  )
+}
+
+// ── EmpresaPickerModal ─────────────────────────────────────────────────────────
+function EmpresaPickerModal({ visible, empresas, selectedId, onSelect, onClose, colors }) {
+  const [query, setQuery] = useState('')
+  useEffect(() => { if (visible) setQuery('') }, [visible])
+  const filtered = query.trim() ? empresas.filter(e => e.nombre?.toLowerCase().includes(query.toLowerCase())) : empresas
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.headerBg }}>
+          <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
+            <Ionicons name="arrow-back" size={22} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, flex: 1 }}>Seleccionar empresa</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 14, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: colors.inputBorder, backgroundColor: colors.inputBg }}>
+          <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+          <TextInput style={{ flex: 1, fontSize: 14, color: colors.text }} placeholder="Buscar empresa..." placeholderTextColor={colors.textMuted} value={query} onChangeText={setQuery} autoFocus />
+          {query ? <TouchableOpacity onPress={() => setQuery('')}><Ionicons name="close-circle" size={16} color={colors.textMuted} /></TouchableOpacity> : null}
+        </View>
+        <FlatList
+          data={filtered}
+          keyExtractor={item => item.id}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => {
+            const sel = item.id === selectedId
+            return (
+              <TouchableOpacity onPress={() => { onSelect(item.id); onClose() }} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: sel ? colors.primaryBg : 'transparent' }}>
+                <Text style={{ flex: 1, fontSize: 15, color: sel ? colors.primary : colors.text, fontWeight: sel ? '700' : '400' }}>{item.nombre}</Text>
+                {sel && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+              </TouchableOpacity>
+            )
+          }}
+          ListEmptyComponent={<View style={{ paddingTop: 40, alignItems: 'center' }}><Text style={{ color: colors.textMuted, fontSize: 14 }}>Sin resultados</Text></View>}
+        />
+      </View>
+    </Modal>
+  )
+}
+
 // ── SearchableMultiSelect (for EditTicketModal operarios) ──────────────────────
 function MultiSelectOperarios({ items, selectedIds, onToggle, colors }) {
   const [open, setOpen] = useState(false)
@@ -703,55 +942,65 @@ function MultiSelectOperarios({ items, selectedIds, onToggle, colors }) {
           ))}
         </View>
       )}
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => { setOpen(false); setQuery('') }}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', paddingHorizontal: 20 }} activeOpacity={1} onPress={() => { setOpen(false); setQuery('') }}>
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View style={{ backgroundColor: colors.card, borderRadius: 14, overflow: 'hidden', maxHeight: 400 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Seleccionar operarios</Text>
-                <TouchableOpacity onPress={() => { setOpen(false); setQuery('') }}><Ionicons name="close" size={20} color={colors.textMuted} /></TouchableOpacity>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                <Ionicons name="search-outline" size={16} color={colors.textMuted} />
-                <TextInput style={{ flex: 1, fontSize: 14, color: colors.text }} placeholder="Buscar..." placeholderTextColor={colors.textMuted} value={query} onChangeText={setQuery} autoFocus />
-              </View>
-              <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 280 }}>
-                {filtered.map((item, idx) => {
-                  const sel = selectedIds.includes(item.id)
-                  return (
-                    <TouchableOpacity key={item.id} onPress={() => onToggle(item.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: idx < filtered.length - 1 ? 1 : 0, borderBottomColor: colors.border, backgroundColor: sel ? colors.primaryBg : 'transparent' }}>
-                      <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: avColor(item.id), alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 11, color: '#fff', fontWeight: '700' }}>{inits(item.nombre)}</Text>
-                      </View>
-                      <Text style={{ flex: 1, fontSize: 14, color: sel ? colors.primary : colors.text, fontWeight: sel ? '700' : '400' }} numberOfLines={1}>{item.nombre}</Text>
-                      {sel && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
-                    </TouchableOpacity>
-                  )
-                })}
-              </ScrollView>
-              <TouchableOpacity onPress={() => { setOpen(false); setQuery('') }} style={{ margin: 12, paddingVertical: 12, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>{selectedIds.length > 0 ? `Confirmar (${selectedIds.length})` : 'Cerrar'}</Text>
-              </TouchableOpacity>
-            </View>
+      {/* Inline dropdown */}
+      {open && (
+        <View style={{ borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, marginTop: 4, backgroundColor: colors.card, overflow: 'hidden' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Ionicons name="search-outline" size={15} color={colors.textMuted} />
+            <TextInput style={{ flex: 1, fontSize: 13, color: colors.text }} placeholder="Buscar operario..." placeholderTextColor={colors.textMuted} value={query} onChangeText={setQuery} />
+            {query ? <TouchableOpacity onPress={() => setQuery('')}><Ionicons name="close-circle" size={15} color={colors.textMuted} /></TouchableOpacity> : null}
+          </View>
+          {filtered.length === 0 ? (
+            <View style={{ paddingVertical: 16, alignItems: 'center' }}><Text style={{ color: colors.textMuted, fontSize: 13 }}>Sin resultados</Text></View>
+          ) : (
+            filtered.map((item, idx) => {
+              const sel = selectedIds.includes(item.id)
+              return (
+                <TouchableOpacity key={item.id} onPress={() => onToggle(item.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: idx < filtered.length - 1 ? 1 : 0, borderBottomColor: colors.border, backgroundColor: sel ? colors.primaryBg : 'transparent' }}>
+                  <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: avColor(item.id), alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 10, color: '#fff', fontWeight: '700' }}>{inits(item.nombre)}</Text>
+                  </View>
+                  <Text style={{ flex: 1, fontSize: 13, color: sel ? colors.primary : colors.text, fontWeight: sel ? '700' : '400' }} numberOfLines={1}>{item.nombre}</Text>
+                  {sel && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
+                </TouchableOpacity>
+              )
+            })
+          )}
+          <TouchableOpacity onPress={() => { setOpen(false); setQuery('') }} style={{ margin: 10, paddingVertical: 10, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>{selectedIds.length > 0 ? `Confirmar (${selectedIds.length})` : 'Cerrar'}</Text>
           </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+        </View>
+      )}
     </View>
   )
 }
 
 // ── EditTicketModal ────────────────────────────────────────────────────────────
-function EditTicketModal({ visible, ticket, operarios, onClose, onSave, colors }) {
-  const [form, setForm] = useState({ asunto: '', descripcion: '', prioridad: 'Media', estado: 'Pendiente', contacto_nombre: null, telefono_cliente: null })
+function EditTicketModal({ visible, ticket, operarios, empresas, onClose, onSave, colors }) {
+  const insets = useSafeAreaInsets()
+  const [form, setForm] = useState({
+    empresa_id: '', asunto: '', descripcion: '',
+    prioridad: 'Media', estado: 'Pendiente',
+    contacto_nombre: null, telefono_cliente: null,
+  })
   const [selOperarios, setSelOperarios] = useState([])
   const [selDispositivos, setSelDispositivos] = useState([])
   const [dispositivos, setDispositivos] = useState([])
-  const [empresaContactos, setEmpresaContactos] = useState([])
+  const [localContactos, setLocalContactos] = useState([])
+  const [dispSearch, setDispSearch] = useState('')
+  const [showCrearContacto, setShowCrearContacto] = useState(false)
+  const [showAñadirDisp, setShowAñadirDisp] = useState(false)
+  const [showEmpresaPicker, setShowEmpresaPicker] = useState(false)
+  const [empresaQuery, setEmpresaQuery] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (visible && ticket) {
+      const dispIds = ticket.dispositivos_ids?.length
+        ? ticket.dispositivos_ids
+        : (ticket.dispositivo_id ? [ticket.dispositivo_id] : [])
       setForm({
+        empresa_id: ticket.empresa_id || '',
         asunto: ticket.asunto || '',
         descripcion: ticket.descripcion || '',
         prioridad: ticket.prioridad || 'Media',
@@ -759,24 +1008,35 @@ function EditTicketModal({ visible, ticket, operarios, onClose, onSave, colors }
         contacto_nombre: ticket.contacto_nombre || null,
         telefono_cliente: ticket.telefono_cliente || null,
       })
-      // Pre-select assigned operarios
       setSelOperarios((ticket.ticket_asignaciones || []).map(a => a.user_id))
-      // Pre-select dispositivos
-      const dispIds = []
-      if (ticket.dispositivos?.id) dispIds.push(ticket.dispositivos.id)
-      ;(ticket.dispositivos_extra || []).forEach(d => { if (d.id) dispIds.push(d.id) })
       setSelDispositivos(dispIds)
-      // Load dispositivos and contacts for the empresa
+      setDispSearch('')
+      const emp = (Array.isArray(empresas) ? empresas : []).find(e => e.id === ticket.empresa_id)
+      setLocalContactos((emp?.contactos || []).filter(c => c.nombre?.trim()))
       if (ticket.empresa_id) {
-        getDispositivos(ticket.empresa_id).then(data => setDispositivos((data || []).filter(d => d.categoria !== 'correo'))).catch(() => setDispositivos([]))
-        getEmpresas().then(data => {
-          const list = Array.isArray(data) ? data : (data?.empresas || [])
-          const emp = list.find(e => e.id === ticket.empresa_id)
-          setEmpresaContactos((emp?.contactos || []).filter(c => c.nombre?.trim()))
-        }).catch(() => setEmpresaContactos([]))
+        getDispositivos(ticket.empresa_id)
+          .then(data => setDispositivos((data || []).filter(d => d.categoria !== 'correo')))
+          .catch(() => setDispositivos([]))
+      } else {
+        setDispositivos([])
       }
     }
   }, [visible, ticket])
+
+  function onChangeEmpresa(id) {
+    const emp = (Array.isArray(empresas) ? empresas : []).find(e => e.id === id)
+    setLocalContactos((emp?.contactos || []).filter(c => c.nombre?.trim()))
+    setForm(f => ({ ...f, empresa_id: id, contacto_nombre: null, telefono_cliente: null }))
+    setSelDispositivos([])
+    setDispSearch('')
+    if (id) {
+      getDispositivos(id)
+        .then(data => setDispositivos((data || []).filter(d => d.categoria !== 'correo')))
+        .catch(() => setDispositivos([]))
+    } else {
+      setDispositivos([])
+    }
+  }
 
   function toggleDispositivo(id) {
     setSelDispositivos(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -787,21 +1047,17 @@ function EditTicketModal({ visible, ticket, operarios, onClose, onSave, colors }
   }
 
   async function handleSave() {
+    if (!form.empresa_id) { Alert.alert('Error', 'Selecciona una empresa'); return }
     if (!form.asunto.trim()) { Alert.alert('Error', 'El asunto es obligatorio'); return }
     setSaving(true)
     try {
-      await onSave({
-        asunto: form.asunto.trim(),
-        descripcion: form.descripcion.trim() || null,
-        prioridad: form.prioridad,
-        estado: form.estado,
-        contacto_nombre: form.contacto_nombre || null,
-        telefono_cliente: form.telefono_cliente || null,
-        operarios: selOperarios,
-        dispositivos_ids: selDispositivos,
-      })
+      await onSave({ ...form, operarios: selOperarios, dispositivos_ids: selDispositivos })
     } finally { setSaving(false) }
   }
+
+  const filteredDisps = dispSearch.trim()
+    ? dispositivos.filter(d => d.nombre?.toLowerCase().includes(dispSearch.toLowerCase()) || (d.tipo || '').toLowerCase().includes(dispSearch.toLowerCase()))
+    : dispositivos
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -813,6 +1069,129 @@ function EditTicketModal({ visible, ticket, operarios, onClose, onSave, colors }
           </View>
 
           <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+            {/* Empresa */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Empresa *</Text>
+              <TouchableOpacity
+                onPress={() => { setEmpresaQuery(''); setShowEmpresaPicker(true) }}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: form.empresa_id ? colors.primary : colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12 }}
+              >
+                <Text style={{ fontSize: 14, color: form.empresa_id ? colors.text : colors.textMuted, flex: 1 }} numberOfLines={1}>
+                  {form.empresa_id ? ((Array.isArray(empresas) ? empresas : []).find(e => e.id === form.empresa_id)?.nombre || 'Empresa seleccionada') : 'Seleccionar empresa...'}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Contacto */}
+            {form.empresa_id && (
+              <View style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase' }}>Contacto</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowCrearContacto(true)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.primary }}
+                  >
+                    <Ionicons name="person-add-outline" size={13} color={colors.primary} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Crear contacto</Text>
+                  </TouchableOpacity>
+                </View>
+                {localContactos.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Esta empresa no tiene contactos registrados.</Text>
+                ) : (
+                  <View style={{ gap: 6 }}>
+                    <TouchableOpacity
+                      onPress={() => setForm(f => ({ ...f, contacto_nombre: null, telefono_cliente: null }))}
+                      style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 8, borderWidth: 1.5, borderColor: !form.contacto_nombre ? colors.primary : colors.border, backgroundColor: !form.contacto_nombre ? colors.primaryBg : colors.bg }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: !form.contacto_nombre ? colors.primary : colors.textMuted }}>Sin contacto</Text>
+                    </TouchableOpacity>
+                    {localContactos.map((c, i) => {
+                      const sel = form.contacto_nombre === c.nombre
+                      return (
+                        <TouchableOpacity
+                          key={i}
+                          onPress={() => setForm(f => ({ ...f, contacto_nombre: c.nombre, telefono_cliente: c.telefono || null }))}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primaryBg : colors.bg }}
+                        >
+                          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: sel ? colors.primary : colors.badgeGray, alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#fff' : colors.textMuted }}>{(c.nombre || '?').charAt(0).toUpperCase()}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: sel ? colors.primary : colors.text }}>{c.nombre}</Text>
+                            {c.cargo ? <Text style={{ fontSize: 11, color: colors.textMuted }}>{c.cargo}</Text> : null}
+                          </View>
+                          {c.telefono ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Ionicons name="call-outline" size={12} color={sel ? colors.primary : colors.textMuted} />
+                              <Text style={{ fontSize: 12, color: sel ? colors.primary : colors.textMuted }}>{c.telefono}</Text>
+                            </View>
+                          ) : null}
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Dispositivos */}
+            {form.empresa_id && (
+              <View style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase' }}>Equipos</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowAñadirDisp(true)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.primary }}
+                  >
+                    <Ionicons name="add-outline" size={13} color={colors.primary} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Añadir dispositivo</Text>
+                  </TouchableOpacity>
+                </View>
+                {dispositivos.length > 0 && (
+                  <TextInput
+                    style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: colors.text, marginBottom: 8 }}
+                    value={dispSearch}
+                    onChangeText={setDispSearch}
+                    placeholder="Buscar dispositivo..."
+                    placeholderTextColor={colors.textMuted}
+                  />
+                )}
+                {filteredDisps.length === 0 && dispositivos.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Esta empresa no tiene dispositivos registrados.</Text>
+                ) : filteredDisps.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Sin resultados</Text>
+                ) : (
+                  <View style={{ gap: 6 }}>
+                    {filteredDisps.map(d => {
+                      const sel = selDispositivos.includes(d.id)
+                      return (
+                        <TouchableOpacity
+                          key={d.id}
+                          onPress={() => toggleDispositivo(d.id)}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primaryBg : colors.bg }}
+                        >
+                          <View style={{ width: 18, height: 18, borderRadius: 4, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                            {sel && <Ionicons name="checkmark" size={12} color="#fff" />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: sel ? colors.primary : colors.text }}>{d.nombre}</Text>
+                            {d.tipo ? <Text style={{ fontSize: 11, color: colors.textMuted }}>{d.tipo}</Text> : null}
+                          </View>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                )}
+                {selDispositivos.length > 0 && (
+                  <TouchableOpacity onPress={() => setSelDispositivos([])} style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="close-circle-outline" size={14} color={colors.textMuted} />
+                    <Text style={{ fontSize: 12, color: colors.textMuted }}>{selDispositivos.length} seleccionado{selDispositivos.length > 1 ? 's' : ''} · Limpiar</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             {/* Asunto */}
             <View style={{ marginBottom: 14 }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Asunto *</Text>
@@ -820,50 +1199,21 @@ function EditTicketModal({ visible, ticket, operarios, onClose, onSave, colors }
                 style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
                 value={form.asunto}
                 onChangeText={v => setForm(f => ({ ...f, asunto: v }))}
-                placeholder="Describe el problema..."
                 placeholderTextColor={colors.textMuted}
               />
             </View>
 
-            {/* Descripción */}
+            {/* Descripcion */}
             <View style={{ marginBottom: 14 }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Descripción</Text>
               <TextInput
                 style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text, height: 80, textAlignVertical: 'top', paddingTop: 10 }}
                 value={form.descripcion}
                 onChangeText={v => setForm(f => ({ ...f, descripcion: v }))}
-                placeholder="Detalles adicionales..."
                 placeholderTextColor={colors.textMuted}
                 multiline
               />
             </View>
-
-            {/* Dispositivos */}
-            {dispositivos.length > 0 && (
-              <View style={{ marginBottom: 14 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Equipos</Text>
-                <View style={{ gap: 6 }}>
-                  {dispositivos.map(d => {
-                    const sel = selDispositivos.includes(d.id)
-                    return (
-                      <TouchableOpacity
-                        key={d.id}
-                        onPress={() => toggleDispositivo(d.id)}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primaryBg : colors.bg }}
-                      >
-                        <View style={{ width: 18, height: 18, borderRadius: 4, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-                          {sel && <Ionicons name="checkmark" size={12} color="#fff" />}
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: sel ? colors.primary : colors.text }}>{d.nombre}</Text>
-                          {d.tipo ? <Text style={{ fontSize: 11, color: colors.textMuted }}>{d.tipo}</Text> : null}
-                        </View>
-                      </TouchableOpacity>
-                    )
-                  })}
-                </View>
-              </View>
-            )}
 
             {/* Prioridad */}
             <View style={{ marginBottom: 14 }}>
@@ -897,45 +1247,6 @@ function EditTicketModal({ visible, ticket, operarios, onClose, onSave, colors }
               </View>
             </View>
 
-            {/* Contacto */}
-            {empresaContactos.length > 0 && (
-              <View style={{ marginBottom: 14 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Contacto</Text>
-                <View style={{ gap: 6 }}>
-                  <TouchableOpacity
-                    onPress={() => setForm(f => ({ ...f, contacto_nombre: null, telefono_cliente: null }))}
-                    style={{ paddingHorizontal: 12, paddingVertical: 9, borderRadius: 8, borderWidth: 1.5, borderColor: !form.contacto_nombre ? colors.primary : colors.border, backgroundColor: !form.contacto_nombre ? colors.primaryBg : colors.bg }}
-                  >
-                    <Text style={{ fontSize: 13, color: !form.contacto_nombre ? colors.primary : colors.textMuted }}>Sin contacto</Text>
-                  </TouchableOpacity>
-                  {empresaContactos.map((c, i) => {
-                    const sel = form.contacto_nombre === c.nombre
-                    return (
-                      <TouchableOpacity
-                        key={i}
-                        onPress={() => setForm(f => ({ ...f, contacto_nombre: c.nombre, telefono_cliente: c.telefono || null }))}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primaryBg : colors.bg }}
-                      >
-                        <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: sel ? colors.primary : colors.border, alignItems: 'center', justifyContent: 'center' }}>
-                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{(c.nombre || '?').charAt(0).toUpperCase()}</Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: sel ? colors.primary : colors.text }}>{c.nombre}</Text>
-                          {c.cargo ? <Text style={{ fontSize: 11, color: colors.textMuted }}>{c.cargo}</Text> : null}
-                        </View>
-                        {c.telefono ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            <Ionicons name="call-outline" size={13} color={colors.textMuted} />
-                            <Text style={{ fontSize: 12, color: colors.textMuted }}>{c.telefono}</Text>
-                          </View>
-                        ) : null}
-                      </TouchableOpacity>
-                    )
-                  })}
-                </View>
-              </View>
-            )}
-
             {/* Operarios */}
             {operarios.length > 0 && (
               <MultiSelectOperarios
@@ -956,6 +1267,65 @@ function EditTicketModal({ visible, ticket, operarios, onClose, onSave, colors }
             </TouchableOpacity>
           </View>
         </View>
+
+        <CrearContactoModal
+          visible={showCrearContacto}
+          empresaId={form.empresa_id}
+          empresas={empresas}
+          onClose={() => setShowCrearContacto(false)}
+          onSaved={(newContact, allContacts) => {
+            setLocalContactos(allContacts.filter(c => c.nombre?.trim()))
+            setForm(f => ({ ...f, contacto_nombre: newContact.nombre, telefono_cliente: newContact.telefono || null }))
+            setShowCrearContacto(false)
+          }}
+          colors={colors}
+        />
+        <AñadirDispositivoModal
+          visible={showAñadirDisp}
+          empresaId={form.empresa_id}
+          onClose={() => setShowAñadirDisp(false)}
+          onSaved={newDevice => {
+            setDispositivos(prev => [...prev, newDevice])
+            setSelDispositivos(prev => [...prev, newDevice.id])
+            setShowAñadirDisp(false)
+          }}
+          colors={colors}
+        />
+
+        {/* Empresa picker — inline overlay dentro del mismo Modal */}
+        {showEmpresaPicker && (
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.bg, paddingTop: insets.top }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.headerBg }}>
+              <TouchableOpacity onPress={() => setShowEmpresaPicker(false)} style={{ padding: 4 }}>
+                <Ionicons name="arrow-back" size={22} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, flex: 1 }}>Seleccionar empresa</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 14, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: colors.inputBorder, backgroundColor: colors.inputBg }}>
+              <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+              <TextInput style={{ flex: 1, fontSize: 14, color: colors.text }} placeholder="Buscar empresa..." placeholderTextColor={colors.textMuted} value={empresaQuery} onChangeText={setEmpresaQuery} autoFocus />
+              {empresaQuery ? <TouchableOpacity onPress={() => setEmpresaQuery('')}><Ionicons name="close-circle" size={16} color={colors.textMuted} /></TouchableOpacity> : null}
+            </View>
+            <FlatList
+              data={(Array.isArray(empresas) ? empresas : []).filter(e => !empresaQuery.trim() || e.nombre?.toLowerCase().includes(empresaQuery.toLowerCase()))}
+              keyExtractor={item => item.id}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => {
+                const sel = item.id === form.empresa_id
+                return (
+                  <TouchableOpacity
+                    onPress={() => { onChangeEmpresa(item.id); setShowEmpresaPicker(false) }}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: sel ? colors.primaryBg : 'transparent' }}
+                  >
+                    <Text style={{ flex: 1, fontSize: 15, color: sel ? colors.primary : colors.text, fontWeight: sel ? '700' : '400' }}>{item.nombre}</Text>
+                    {sel && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                  </TouchableOpacity>
+                )
+              }}
+              ListEmptyComponent={<View style={{ paddingTop: 40, alignItems: 'center' }}><Text style={{ color: colors.textMuted }}>Sin resultados</Text></View>}
+            />
+          </View>
+        )}
       </View>
     </Modal>
   )
