@@ -1439,6 +1439,10 @@ export default function TicketsScreen({ navigation }) {
   }, [])
 
   useEffect(() => {
+    if (user?.id) setFilterOperario(user.id)
+  }, [user?.id])
+
+  useEffect(() => {
     const interval = setInterval(() => { load().catch(() => {}) }, 30000)
     return () => clearInterval(interval)
   }, [load])
@@ -1649,18 +1653,6 @@ export default function TicketsScreen({ navigation }) {
         {!mostrarCerrados ? (
           <>
             <TouchableOpacity
-              onPress={() => setFilterOperario('all')}
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1.5, borderColor: filterOperario === 'all' ? colors.primary : colors.border, backgroundColor: colors.card }}
-            >
-              <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: filterOperario === 'all' ? colors.primaryBg : colors.border, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="ticket-outline" size={14} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{statAbiertosTotal}</Text>
-                <Text style={{ fontSize: 10, color: colors.textMuted }}>Total</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
               onPress={() => setFilterOperario(user?.id)}
               style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1.5, borderColor: filterOperario === user?.id ? '#d97706' : colors.border, backgroundColor: colors.card }}
             >
@@ -1670,6 +1662,18 @@ export default function TicketsScreen({ navigation }) {
               <View>
                 <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{statMisAbiertos}</Text>
                 <Text style={{ fontSize: 10, color: colors.textMuted }}>Mis abiertos</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setFilterOperario('all')}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1.5, borderColor: filterOperario === 'all' ? colors.primary : colors.border, backgroundColor: colors.card }}
+            >
+              <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: filterOperario === 'all' ? colors.primaryBg : colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="ticket-outline" size={14} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{statAbiertosTotal}</Text>
+                <Text style={{ fontSize: 10, color: colors.textMuted }}>Total</Text>
               </View>
             </TouchableOpacity>
           </>
