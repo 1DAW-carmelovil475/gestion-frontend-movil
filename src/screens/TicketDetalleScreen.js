@@ -370,12 +370,6 @@ export default function TicketDetalleScreen({ route, navigation }) {
               </View>
             ) : null)}
 
-            {ticket.descripcion ? (
-              <View style={{ marginTop: 4 }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textMuted, marginBottom: 4 }}>Descripción:</Text>
-                <Text style={{ fontSize: 13, color: colors.text, lineHeight: 18 }}>{ticket.descripcion}</Text>
-              </View>
-            ) : null}
 
             {/* Operarios */}
             <View style={{ marginTop: 10 }}>
@@ -506,12 +500,28 @@ export default function TicketDetalleScreen({ route, navigation }) {
               data={comentarios}
               keyExtractor={item => String(item.id)}
               contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
-              ListEmptyComponent={
+              ListHeaderComponent={ticket.descripcion ? (
+                <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginBottom: 14 }}>
+                  <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Ionicons name="document-text-outline" size={16} color={colors.textMuted} />
+                  </View>
+                  <View style={{ flex: 1, maxWidth: '85%' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>Descripción del ticket</Text>
+                      <Text style={{ fontSize: 11, color: colors.textMuted }}>{formatFecha(ticket.created_at)}</Text>
+                    </View>
+                    <View style={{ padding: 12, borderRadius: 12, backgroundColor: colors.inputBg, borderLeftWidth: 3, borderLeftColor: colors.border }}>
+                      <Text style={{ fontSize: 13, color: colors.text, lineHeight: 19 }}>{ticket.descripcion}</Text>
+                    </View>
+                  </View>
+                </View>
+              ) : null}
+              ListEmptyComponent={!ticket.descripcion ? (
                 <View style={{ alignItems: 'center', paddingTop: 40, gap: 8 }}>
                   <Ionicons name="chatbubble-outline" size={36} color={colors.textMuted} />
                   <Text style={{ fontSize: 14, color: colors.textMuted }}>Sin comentarios</Text>
                 </View>
-              }
+              ) : null}
               renderItem={({ item }) => {
                 const isOwn = item.user_id === user?.id
                 return (
