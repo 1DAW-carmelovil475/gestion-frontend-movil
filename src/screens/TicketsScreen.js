@@ -12,6 +12,7 @@ import {
   getEmpresas, getOperarios, getDispositivos,
   assignOperarios, removeOperario,
   updateEmpresa, createDispositivo,
+  getUsuarios, updateUsuario,
 } from '../services/api'
 
 const ESTADOS = ['Pendiente', 'En curso', 'Completado', 'Pendiente de facturar', 'Facturado']
@@ -354,6 +355,78 @@ function CrearContactoModal({ visible, empresaId, empresas, onClose, onSaved, co
   )
 }
 
+// ─── EditarContactoModal ──────────────────────────────────────────────────────
+function EditarContactoModal({ visible, empresaId, empresas, contacto, onClose, onSaved, colors }) {
+  const [nombre, setNombre] = useState('')
+  const [telefono, setTelefono] = useState('')
+  const [email, setEmail] = useState('')
+  const [cargo, setCargo] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (visible && contacto) {
+      setNombre(contacto.nombre || '')
+      setTelefono(contacto.telefono || '')
+      setEmail(contacto.email || '')
+      setCargo(contacto.cargo || '')
+    }
+  }, [visible, contacto])
+
+  async function handleSave() {
+    if (!nombre.trim()) { Alert.alert('Error', 'El nombre es obligatorio'); return }
+    setSaving(true)
+    try {
+      const empresa = empresas.find(e => e.id === empresaId)
+      const updatedContacto = { nombre: nombre.trim(), telefono: telefono.trim() || null, email: email.trim() || null, cargo: cargo.trim() || null }
+      const nuevosContactos = (empresa?.contactos || []).map(c => c.nombre === contacto.nombre ? updatedContacto : c)
+      await updateEmpresa(empresaId, { ...empresa, contactos: nuevosContactos })
+      if (contacto.email) {
+        try {
+          const allUsers = await getUsuarios()
+          const linkedUser = allUsers?.find(u => u.email?.toLowerCase() === contacto.email.toLowerCase())
+          if (linkedUser) {
+            const userUpdate = { nombre: updatedContacto.nombre, telefono: updatedContacto.telefono || '' }
+            if (updatedContacto.email && updatedContacto.email.toLowerCase() !== contacto.email.toLowerCase())
+              userUpdate.email = updatedContacto.email
+            await updateUsuario(linkedUser.id, userUpdate)
+          }
+        } catch {}
+      }
+      onSaved(updatedContacto, nuevosContactos)
+    } catch (e) { Alert.alert('Error', e.message) }
+    finally { setSaving(false) }
+  }
+
+  const inp = { backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }
+  const lbl = { fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }
+
+  if (!visible) return null
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end', backgroundColor: colors.overlay, zIndex: 999 }}>
+      <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%', paddingBottom: 24 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>Editar contacto</Text>
+          <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity>
+        </View>
+        <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+          <View style={{ marginBottom: 14 }}><Text style={lbl}>Nombre *</Text><TextInput style={inp} value={nombre} onChangeText={setNombre} placeholder="Nombre del contacto" placeholderTextColor={colors.textMuted} /></View>
+          <View style={{ marginBottom: 14 }}><Text style={lbl}>Teléfono</Text><TextInput style={inp} value={telefono} onChangeText={setTelefono} placeholder="612 345 678" placeholderTextColor={colors.textMuted} keyboardType="phone-pad" /></View>
+          <View style={{ marginBottom: 14 }}><Text style={lbl}>Email</Text><TextInput style={inp} value={email} onChangeText={setEmail} placeholder="contacto@empresa.com" placeholderTextColor={colors.textMuted} keyboardType="email-address" autoCapitalize="none" /></View>
+          <View style={{ marginBottom: 14 }}><Text style={lbl}>Cargo</Text><TextInput style={inp} value={cargo} onChangeText={setCargo} placeholder="Ej: Responsable IT, Gerente..." placeholderTextColor={colors.textMuted} /></View>
+        </ScrollView>
+        <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <TouchableOpacity style={{ flex: 1, paddingVertical: 13, alignItems: 'center', borderRadius: 8, borderWidth: 1.5, borderColor: colors.border }} onPress={onClose}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textMuted }}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={{ flex: 2, paddingVertical: 13, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }} onPress={handleSave} disabled={saving}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: '#ffffff' }}>{saving ? 'Guardando...' : 'Guardar cambios'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  )
+}
+
 // ─── AñadirDispositivoModal ───────────────────────────────────────────────────
 function AñadirDispositivoModal({ visible, empresaId, onClose, onSaved, colors }) {
   const [step, setStep] = useState('select')
@@ -612,6 +685,7 @@ function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, color
   const [localContactos, setLocalContactos] = useState([])
   const [dispSearch, setDispSearch] = useState('')
   const [showCrearContacto, setShowCrearContacto] = useState(false)
+  const [showEditarContacto, setShowEditarContacto] = useState(false)
   const [showAñadirDisp, setShowAñadirDisp] = useState(false)
   const [showEmpresaPicker, setShowEmpresaPicker] = useState(false)
   const [empresaQuery, setEmpresaQuery] = useState('')
@@ -689,13 +763,24 @@ function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, color
               <View style={{ marginBottom: 14 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase' }}>Contacto</Text>
-                  <TouchableOpacity
-                    onPress={() => setShowCrearContacto(true)}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.primary }}
-                  >
-                    <Ionicons name="person-add-outline" size={13} color={colors.primary} />
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Crear contacto</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {form.contacto_nombre && (
+                      <TouchableOpacity
+                        onPress={() => setShowEditarContacto(true)}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.textMuted }}
+                      >
+                        <Ionicons name="pencil-outline" size={13} color={colors.textMuted} />
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textMuted }}>Editar contacto</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => setShowCrearContacto(true)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.primary }}
+                    >
+                      <Ionicons name="person-add-outline" size={13} color={colors.primary} />
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Crear contacto</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 {localContactos.length === 0 ? (
                   <Text style={{ fontSize: 12, color: colors.textMuted }}>Esta empresa no tiene contactos registrados.</Text>
@@ -886,6 +971,19 @@ function NuevoTicketModal({ visible, empresas, operarios, onClose, onSave, color
         }}
         colors={colors}
       />
+      <EditarContactoModal
+        visible={showEditarContacto}
+        empresaId={form.empresa_id}
+        empresas={empresas}
+        contacto={localContactos.find(c => c.nombre === form.contacto_nombre) || null}
+        onClose={() => setShowEditarContacto(false)}
+        onSaved={(updatedContact, allContacts) => {
+          setLocalContactos(allContacts.filter(c => c.nombre?.trim()))
+          setForm(f => ({ ...f, contacto_nombre: updatedContact.nombre, telefono_cliente: updatedContact.telefono || null }))
+          setShowEditarContacto(false)
+        }}
+        colors={colors}
+      />
       <AñadirDispositivoModal
         visible={showAñadirDisp}
         empresaId={form.empresa_id}
@@ -950,6 +1048,7 @@ function EditarTicketModal({ visible, ticket, empresas, operarios, onClose, onSa
   const [localContactos, setLocalContactos] = useState([])
   const [dispSearch, setDispSearch] = useState('')
   const [showCrearContacto, setShowCrearContacto] = useState(false)
+  const [showEditarContacto, setShowEditarContacto] = useState(false)
   const [showAñadirDisp, setShowAñadirDisp] = useState(false)
   const [showEmpresaPicker, setShowEmpresaPicker] = useState(false)
   const [empresaQuery, setEmpresaQuery] = useState('')
@@ -1045,13 +1144,24 @@ function EditarTicketModal({ visible, ticket, empresas, operarios, onClose, onSa
               <View style={{ marginBottom: 14 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase' }}>Contacto</Text>
-                  <TouchableOpacity
-                    onPress={() => setShowCrearContacto(true)}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.primary }}
-                  >
-                    <Ionicons name="person-add-outline" size={13} color={colors.primary} />
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Crear contacto</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {form.contacto_nombre && (
+                      <TouchableOpacity
+                        onPress={() => setShowEditarContacto(true)}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.textMuted }}
+                      >
+                        <Ionicons name="pencil-outline" size={13} color={colors.textMuted} />
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textMuted }}>Editar contacto</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => setShowCrearContacto(true)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.primary }}
+                    >
+                      <Ionicons name="person-add-outline" size={13} color={colors.primary} />
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>Crear contacto</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 {localContactos.length === 0 ? (
                   <Text style={{ fontSize: 12, color: colors.textMuted }}>Esta empresa no tiene contactos registrados.</Text>
@@ -1237,6 +1347,19 @@ function EditarTicketModal({ visible, ticket, empresas, operarios, onClose, onSa
           setLocalContactos(allContacts.filter(c => c.nombre?.trim()))
           setForm(f => ({ ...f, contacto_nombre: newContact.nombre, telefono_cliente: newContact.telefono || null }))
           setShowCrearContacto(false)
+        }}
+        colors={colors}
+      />
+      <EditarContactoModal
+        visible={showEditarContacto}
+        empresaId={form.empresa_id}
+        empresas={empresas}
+        contacto={localContactos.find(c => c.nombre === form.contacto_nombre) || null}
+        onClose={() => setShowEditarContacto(false)}
+        onSaved={(updatedContact, allContacts) => {
+          setLocalContactos(allContacts.filter(c => c.nombre?.trim()))
+          setForm(f => ({ ...f, contacto_nombre: updatedContact.nombre, telefono_cliente: updatedContact.telefono || null }))
+          setShowEditarContacto(false)
         }}
         colors={colors}
       />
