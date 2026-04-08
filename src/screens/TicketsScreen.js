@@ -380,18 +380,6 @@ function EditarContactoModal({ visible, empresaId, empresas, contacto, onClose, 
       const updatedContacto = { nombre: nombre.trim(), telefono: telefono.trim() || null, email: email.trim() || null, cargo: cargo.trim() || null }
       const nuevosContactos = (empresa?.contactos || []).map(c => c.nombre === contacto.nombre ? updatedContacto : c)
       await updateEmpresa(empresaId, { ...empresa, contactos: nuevosContactos })
-      if (contacto.email) {
-        try {
-          const allUsers = await getUsuarios()
-          const linkedUser = allUsers?.find(u => u.email?.toLowerCase() === contacto.email.toLowerCase())
-          if (linkedUser) {
-            const userUpdate = { nombre: updatedContacto.nombre, telefono: updatedContacto.telefono || '' }
-            if (updatedContacto.email && updatedContacto.email.toLowerCase() !== contacto.email.toLowerCase())
-              userUpdate.email = updatedContacto.email
-            await updateUsuario(linkedUser.id, userUpdate)
-          }
-        } catch {}
-      }
       onSaved(updatedContacto, nuevosContactos)
     } catch (e) { Alert.alert('Error', e.message) }
     finally { setSaving(false) }
