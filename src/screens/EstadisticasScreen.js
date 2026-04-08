@@ -25,6 +25,7 @@ import {
 const CHART_W = Dimensions.get('window').width - 32;
 
 const ESTADO_COLORS = {
+  sin_asignar: '#dc2626',
   pendientes: '#f59e0b',
   en_curso: '#06b6d4',
   completados: '#22c55e',
@@ -272,6 +273,11 @@ export default function EstadisticasScreen() {
   const estadoData = resumen
     ? [
         {
+          name: 'Sin asignar',
+          value: resumen.sin_asignar ?? 0,
+          color: ESTADO_COLORS.sin_asignar,
+        },
+        {
           name: 'Pendientes',
           value: resumen.pendientes ?? 0,
           color: ESTADO_COLORS.pendientes,
@@ -294,7 +300,7 @@ export default function EstadisticasScreen() {
       ]
     : [];
 
-  const BAR_ABBREV = { 'Pendientes': 'Pend.', 'En curso': 'Curso', 'Completados': 'Comp.', 'Facturados': 'Fact.' };
+  const BAR_ABBREV = { 'Sin asignar': 'S/A', 'Pendientes': 'Pend.', 'En curso': 'Curso', 'Completados': 'Comp.', 'Facturados': 'Fact.' };
   const barLabels = estadoData.map((d) => BAR_ABBREV[d.name] || d.name.split(' ')[0]);
   const barValues = estadoData.map((d) => d.value);
   const barColors = estadoData.map((d) => () => d.color);
@@ -378,6 +384,13 @@ export default function EstadisticasScreen() {
         value: abiertos,
         iconColor: colors.warning,
         bgColor: colors.warningBg,
+      },
+      {
+        icon: 'person-remove-outline',
+        label: 'Sin asignar',
+        value: resumen.sin_asignar ?? 0,
+        iconColor: '#dc2626',
+        bgColor: '#fee2e2',
       },
       {
         icon: 'checkmark-circle-outline',

@@ -1585,6 +1585,7 @@ export default function TicketsScreen({ navigation }) {
   // Stats computados desde tickets (siempre frescos)
   const statAbiertosTotal = tickets.filter(t => ESTADOS_ABIERTOS.includes(t.estado)).length
   const statMisAbiertos   = tickets.filter(t => ESTADOS_ABIERTOS.includes(t.estado) && (t.ticket_asignaciones || []).some(a => a.user_id === user?.id)).length
+  const statSinAsignar    = tickets.filter(t => ESTADOS_ABIERTOS.includes(t.estado) && (t.ticket_asignaciones || []).length === 0).length
   const statCompletados   = tickets.filter(t => t.estado === 'Completado').length
   const statPendFacturar  = tickets.filter(t => t.estado === 'Pendiente de facturar').length
   const statFacturados    = tickets.filter(t => t.estado === 'Facturado').length
@@ -1594,25 +1595,27 @@ export default function TicketsScreen({ navigation }) {
     const open = tickets.filter(t => {
       if (!ESTADOS_ABIERTOS.includes(t.estado)) return false
       if (!matchesSearch(t)) return false
-      if (filterOperario !== 'all' && !(t.ticket_asignaciones || []).some(a => a.user_id === filterOperario)) return false
+      if (filterOperario === '__sin__' && (t.ticket_asignaciones || []).length > 0) return false
+      if (filterOperario !== 'all' && filterOperario !== '__sin__' && !(t.ticket_asignaciones || []).some(a => a.user_id === filterOperario)) return false
       return true
     })
     const map = {}
     open.forEach(t => {
       const asigs = t.ticket_asignaciones || []
       if (!asigs.length) {
-        if (filterOperario !== 'all') return
         if (!map['__sin__']) map['__sin__'] = { key: '__sin__', title: 'Sin asignar', allData: [] }
         map['__sin__'].allData.push(t)
       } else {
         asigs.forEach(a => {
-          if (filterOperario !== 'all' && a.user_id !== filterOperario) return
+          if (filterOperario !== 'all' && filterOperario !== '__sin__' && a.user_id !== filterOperario) return
           if (!map[a.user_id]) map[a.user_id] = { key: a.user_id, title: a.profiles?.nombre || '?', allData: [] }
           map[a.user_id].allData.push(t)
         })
       }
     })
-    return Object.values(map).map(s => ({
+    const grupos = Object.values(map)
+    grupos.sort((a, b) => a.key === '__sin__' ? -1 : b.key === '__sin__' ? 1 : 0)
+    return grupos.map(s => ({
       ...s,
       count: s.allData.length,
       data: collapsedSections[s.key] ? [] : s.allData,
@@ -1795,6 +1798,18 @@ export default function TicketsScreen({ navigation }) {
                 <Text style={{ fontSize: 10, color: colors.textMuted }}>Mis abiertos</Text>
               </View>
             </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setFilterOperario('__sin__')}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1.5, borderColor: filterOperario === '__sin__' ? '#dc2626' : colors.border, backgroundColor: colors.card }}
+            >
+              <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: filterOperario === '__sin__' ? '#fee2e2' : colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="person-remove-outline" size={14} color="#dc2626" />
+              </View>
+              <View>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{statSinAsignar}</Text>
+                <Text style={{ fontSize: 10, color: colors.textMuted }}>Sin asignar</Text>
+              </View>
+            </TouchableOpacity>
           </>
         ) : (
           <>
@@ -1845,10 +1860,16 @@ export default function TicketsScreen({ navigation }) {
               onPress={() => toggleSection(section.key)}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, marginTop: 8, borderBottomWidth: 1.5, borderBottomColor: colors.border }}
             >
-              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: getAvatarColor(section.key), alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 10, color: '#fff', fontWeight: '700' }}>{getInitials(section.title)}</Text>
-              </View>
-              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, flex: 1 }}>Incidencias de {section.title}</Text>
+              {section.key === '__sin__' ? (
+                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#fee2e2', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="person-remove-outline" size={12} color="#dc2626" />
+                </View>
+              ) : (
+                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: getAvatarColor(section.key), alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#fff', fontWeight: '700' }}>{getInitials(section.title)}</Text>
+                </View>
+              )}
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, flex: 1 }}>{section.key === '__sin__' ? 'Incidencias sin asignar' : `Incidencias de ${section.title}`}</Text>
               <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, backgroundColor: colors.primary }}>
                 <Text style={{ fontSize: 11, fontWeight: '700', color: '#fff' }}>{section.count}</Text>
               </View>
