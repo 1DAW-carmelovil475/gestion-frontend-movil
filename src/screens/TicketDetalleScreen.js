@@ -4,6 +4,7 @@ import {
   TextInput, ActivityIndicator, Alert, Modal, KeyboardAvoidingView,
   Platform, FlatList, Linking,
 } from 'react-native'
+import DateTimePicker from '@react-native-community/datetimepicker'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as DocumentPicker from 'expo-document-picker'
@@ -108,10 +109,13 @@ export default function TicketDetalleScreen({ route, navigation }) {
   const [notasSaved, setNotasSaved]   = useState(false)
   const notasTimer = useRef(null)
   // Horas manuales
-  const [horasInicio, setHorasInicio] = useState('')
-  const [horasFin, setHorasFin]       = useState('')
+  const [horasInicio, setHorasInicio] = useState(new Date())
+  const [horasFin, setHorasFin]       = useState(new Date())
   const [horasDesc, setHorasDesc]     = useState('')
   const [savingHoras, setSavingHoras] = useState(false)
+  const [pickerVisible, setPickerVisible] = useState(null) // 'inicio' | 'fin' | null
+  const [pickerMode, setPickerMode] = useState('date') // 'date' | 'time'
+  const [pickerTemp, setPickerTemp] = useState(new Date())
   // File upload
   const [uploadingFiles, setUploadingFiles] = useState(false)
   const [commentFiles, setCommentFiles]     = useState([])
@@ -165,18 +169,46 @@ export default function TicketDetalleScreen({ route, navigation }) {
   }
 
   // ── Horas manuales ──────────────────────────────────────────────────────
+  function openPicker(field, mode) {
+    setPickerTemp(field === 'inicio' ? horasInicio : horasFin)
+    setPickerMode(mode)
+    setPickerVisible(field)
+  }
+  function onPickerChange(event, selected) {
+    if (event.type === 'dismissed' || !selected) { setPickerVisible(null); return }
+    if (pickerMode === 'date') {
+      // After picking date, open time picker
+      setPickerTemp(selected)
+      if (Platform.OS === 'android') {
+        // On Android the picker auto-closes; reopen for time
+        setPickerMode('time')
+        // Keep pickerVisible so it re-renders as time picker
+      } else {
+        setPickerMode('time')
+      }
+    } else {
+      // Commit the full datetime
+      const merged = new Date(pickerTemp)
+      merged.setHours(selected.getHours(), selected.getMinutes(), 0, 0)
+      if (pickerVisible === 'inicio') setHorasInicio(merged)
+      else setHorasFin(merged)
+      setPickerVisible(null)
+    }
+  }
+
   async function handleAddHoras() {
-    if (!horasInicio || !horasFin) return Alert.alert('Error', 'Indica fecha/hora de inicio y fin')
-    const inicio = new Date(horasInicio)
-    const fin = new Date(horasFin)
-    if (fin <= inicio) return Alert.alert('Error', 'La fecha fin debe ser posterior a la de inicio')
+    if (horasFin <= horasInicio) return Alert.alert('Error', 'La fecha fin debe ser posterior a la de inicio')
     setSavingHoras(true)
     try {
-      await createTicketHoras(ticket.id, { fecha_inicio: horasInicio, fecha_fin: horasFin, descripcion: horasDesc || undefined })
+      await createTicketHoras(ticket.id, {
+        fecha_inicio: horasInicio.toISOString(),
+        fecha_fin: horasFin.toISOString(),
+        descripcion: horasDesc || undefined,
+      })
       const fresh = await getTicket(ticket.id)
       setTicket(fresh)
-      setHorasInicio('')
-      setHorasFin('')
+      setHorasInicio(new Date())
+      setHorasFin(new Date())
       setHorasDesc('')
     } catch (e) { Alert.alert('Error', e.message) }
     setSavingHoras(false)
@@ -486,43 +518,87 @@ export default function TicketDetalleScreen({ route, navigation }) {
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
             {/* Form */}
             <View style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, marginBottom: 16 }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Registrar horas</Text>
-              <View style={{ marginBottom: 8 }}>
-                <Text style={{ fontSize: 11, color: colors.textMuted, marginBottom: 4 }}>Inicio (YYYY-MM-DD HH:MM)</Text>
-                <TextInput
-                  style={{ backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: colors.text }}
-                  value={horasInicio}
-                  onChangeText={setHorasInicio}
-                  placeholder="2026-04-09 09:00"
-                  placeholderTextColor={colors.textMuted}
-                />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 12 }}>Registrar horas</Text>
+
+              {/* Inicio */}
+              <View style={{ marginBottom: 10 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textMuted, marginBottom: 6 }}>Inicio</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => openPicker('inicio', 'date')}
+                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 }}
+                  >
+                    <Ionicons name="calendar-outline" size={15} color={colors.textMuted} />
+                    <Text style={{ fontSize: 13, color: colors.text }}>
+                      {horasInicio.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => openPicker('inicio', 'time')}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 }}
+                  >
+                    <Ionicons name="time-outline" size={15} color={colors.textMuted} />
+                    <Text style={{ fontSize: 13, color: colors.text }}>
+                      {horasInicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={{ marginBottom: 8 }}>
-                <Text style={{ fontSize: 11, color: colors.textMuted, marginBottom: 4 }}>Fin (YYYY-MM-DD HH:MM)</Text>
-                <TextInput
-                  style={{ backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: colors.text }}
-                  value={horasFin}
-                  onChangeText={setHorasFin}
-                  placeholder="2026-04-09 13:00"
-                  placeholderTextColor={colors.textMuted}
-                />
+
+              {/* Fin */}
+              <View style={{ marginBottom: 10 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textMuted, marginBottom: 6 }}>Fin</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => openPicker('fin', 'date')}
+                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 }}
+                  >
+                    <Ionicons name="calendar-outline" size={15} color={colors.textMuted} />
+                    <Text style={{ fontSize: 13, color: colors.text }}>
+                      {horasFin.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => openPicker('fin', 'time')}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 }}
+                  >
+                    <Ionicons name="time-outline" size={15} color={colors.textMuted} />
+                    <Text style={{ fontSize: 13, color: colors.text }}>
+                      {horasFin.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={{ marginBottom: 8 }}>
-                <Text style={{ fontSize: 11, color: colors.textMuted, marginBottom: 4 }}>Descripción (opcional)</Text>
+
+              {/* Duración preview */}
+              {horasFin > horasInicio && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, paddingHorizontal: 2 }}>
+                  <Ionicons name="hourglass-outline" size={13} color={colors.primary} />
+                  <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600' }}>
+                    {formatHoras(Math.round((horasFin - horasInicio) / 36e5 * 100) / 100)}
+                  </Text>
+                </View>
+              )}
+
+              {/* Descripción */}
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textMuted, marginBottom: 6 }}>Descripción (opcional)</Text>
                 <TextInput
-                  style={{ backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: colors.text }}
+                  style={{ backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: colors.text }}
                   value={horasDesc}
                   onChangeText={setHorasDesc}
                   placeholder="Qué se hizo..."
                   placeholderTextColor={colors.textMuted}
                 />
               </View>
+
               <TouchableOpacity
                 onPress={handleAddHoras}
                 disabled={savingHoras}
-                style={{ backgroundColor: colors.primary, borderRadius: 8, paddingVertical: 10, alignItems: 'center', opacity: savingHoras ? 0.6 : 1 }}
+                style={{ backgroundColor: colors.primary, borderRadius: 8, paddingVertical: 11, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, opacity: savingHoras ? 0.6 : 1 }}
               >
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{savingHoras ? 'Guardando...' : 'Añadir'}</Text>
+                <Ionicons name="add-circle-outline" size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{savingHoras ? 'Guardando...' : 'Añadir registro'}</Text>
               </TouchableOpacity>
             </View>
 
@@ -538,16 +614,28 @@ export default function TicketDetalleScreen({ route, navigation }) {
                   const op = (ticket.ticket_asignaciones || []).find(a => a.user_id === h.user_id)
                   const ms = new Date(h.fecha_fin) - new Date(h.fecha_inicio)
                   const hrs = Math.round(ms / 36e5 * 100) / 100
+                  const nombre = op?.profiles?.nombre || h.profiles?.nombre || '—'
                   const fmtDt = (iso) => new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
                   return (
-                    <View key={h.id} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, marginBottom: 8 }}>
-                      <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{hrs}h</Text>
-                          <Text style={{ fontSize: 11, color: colors.textMuted }}>{fmtDt(h.fecha_inicio)} → {fmtDt(h.fecha_fin)}</Text>
+                    <View key={h.id} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, marginBottom: 8, gap: 12 }}>
+                      {/* Avatar */}
+                      <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: getAvatarColor(h.user_id), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{getInitials(nombre)}</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        {/* Horas + nombre */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                          <Text style={{ fontSize: 15, fontWeight: '800', color: colors.primary }}>{formatHoras(hrs)}</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>{nombre}</Text>
                         </View>
-                        <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600' }}>{op?.profiles?.nombre || '—'}</Text>
-                        {h.descripcion ? <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>{h.descripcion}</Text> : null}
+                        {/* Rango fechas */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                          <Ionicons name="arrow-forward-outline" size={10} color={colors.textMuted} />
+                          <Text style={{ fontSize: 11, color: colors.textMuted }}>{fmtDt(h.fecha_inicio)}</Text>
+                          <Text style={{ fontSize: 11, color: colors.textMuted, opacity: 0.5 }}>→</Text>
+                          <Text style={{ fontSize: 11, color: colors.textMuted }}>{fmtDt(h.fecha_fin)}</Text>
+                        </View>
+                        {h.descripcion ? <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 1 }}>{h.descripcion}</Text> : null}
                       </View>
                       {h.user_id === user?.id && (
                         <TouchableOpacity onPress={() => handleDeleteHoras(h.id)} style={{ padding: 6 }}>
@@ -557,14 +645,27 @@ export default function TicketDetalleScreen({ route, navigation }) {
                     </View>
                   )
                 })}
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
-                    Total: {Math.round((ticket.ticket_horas || []).reduce((s, h) => s + Math.max(0, (new Date(h.fecha_fin) - new Date(h.fecha_inicio)) / 36e5), 0) * 100) / 100}h
+                {/* Total */}
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8, paddingTop: 10, paddingHorizontal: 4, borderTopWidth: 1.5, borderTopColor: colors.border, marginTop: 4 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textMuted }}>Total</Text>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: colors.primary }}>
+                    {formatHoras(Math.round((ticket.ticket_horas || []).reduce((s, h) => s + Math.max(0, (new Date(h.fecha_fin) - new Date(h.fecha_inicio)) / 36e5), 0) * 100) / 100)}
                   </Text>
                 </View>
               </>
             )}
           </ScrollView>
+        )}
+
+        {/* ── DateTimePicker modal ── */}
+        {pickerVisible && (
+          <DateTimePicker
+            value={pickerMode === 'time' ? pickerTemp : (pickerVisible === 'inicio' ? horasInicio : horasFin)}
+            mode={pickerMode}
+            is24Hour={true}
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={onPickerChange}
+          />
         )}
 
         {/* ── NOTAS tab ── (not keyboard-related, just a flex TextInput) */}
