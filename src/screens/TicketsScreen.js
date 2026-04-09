@@ -15,7 +15,7 @@ import {
   getUsuarios, updateUsuario,
 } from '../services/api'
 
-const ESTADOS = ['Pendiente', 'En curso', 'Completado', 'Pendiente de facturar', 'Facturado']
+const ESTADOS = ['Pendiente', 'En curso', 'Pausado', 'Completado', 'Pendiente de facturar', 'Facturado']
 const PRIORIDADES = ['Baja', 'Media', 'Alta', 'Urgente']
 const DEVICE_CATEGORIAS = [
   { key: 'equipo',   label: 'Equipos',    icon: 'desktop-outline' },
@@ -1480,12 +1480,20 @@ function TicketCard({ ticket, onPress, onEdit, onDelete, colors }) {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             <PrioridadBadge p={ticket.prioridad} colors={colors} />
             <EstadoBadge e={ticket.estado} colors={colors} />
-            {ticket.horas_totales > 0 && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                <Ionicons name="time-outline" size={11} color={colors.textMuted} />
-                <Text style={{ fontSize: 10, color: colors.textMuted }}>{formatHoras(ticket.horas_totales)}</Text>
-              </View>
-            )}
+            {(() => {
+              const cerrado = ['Completado', 'Pendiente de facturar', 'Facturado'].includes(ticket.estado)
+              const pausado = ticket.estado === 'Pausado' || ticket.estado === 'Pendiente'
+              const horas = ticket.horas_totales > 0 ? ticket.horas_totales : (ticket.horas_transcurridas || 0)
+              if (horas <= 0 && !cerrado) return null
+              const icon = cerrado ? 'lock-closed-outline' : pausado ? 'pause-outline' : 'time-outline'
+              const color = pausado ? '#64748b' : colors.textMuted
+              return (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Ionicons name={icon} size={11} color={color} />
+                  <Text style={{ fontSize: 10, color }}>{formatHoras(horas)}</Text>
+                </View>
+              )
+            })()}
           </View>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
@@ -1560,7 +1568,7 @@ export default function TicketsScreen({ navigation }) {
     setRefreshing(false)
   }
 
-  const ESTADOS_ABIERTOS = ['Pendiente', 'En curso']
+  const ESTADOS_ABIERTOS = ['Pendiente', 'En curso', 'Pausado']
   const ESTADOS_CERRADOS = ['Completado', 'Pendiente de facturar', 'Facturado']
 
   function matchesSearch(t) {

@@ -91,6 +91,8 @@ export const createTicket          = (d)        => apiFetch('/api/v2/tickets', {
 export const updateTicket          = (id, d)    => apiFetch(`/api/v2/tickets/${id}`, { method: 'PUT', body: JSON.stringify(d) })
 export const deleteTicket          = (id)       => apiFetch(`/api/v2/tickets/${id}`, { method: 'DELETE' })
 export const updateTicketNotas     = (id, n)    => apiFetch(`/api/v2/tickets/${id}/notas`, { method: 'PUT', body: JSON.stringify({ notas: n }) })
+export const createTicketHoras     = (id, d)    => apiFetch(`/api/v2/tickets/${id}/horas`, { method: 'POST', body: JSON.stringify(d) })
+export const deleteTicketHoras     = (id, hId)  => apiFetch(`/api/v2/tickets/${id}/horas/${hId}`, { method: 'DELETE' })
 
 export const getTicketComentarios  = (tid)      => apiFetch(`/api/v2/tickets/${tid}/comentarios`)
 export const deleteTicketComentario= (id)       => apiFetch(`/api/v2/comentarios/${id}`, { method: 'DELETE' })

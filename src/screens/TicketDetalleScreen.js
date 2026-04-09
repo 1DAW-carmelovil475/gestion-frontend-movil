@@ -17,9 +17,10 @@ import {
   updateTicketNotas, uploadTicketArchivos,
   updateEmpresa, createDispositivo,
   getUsuarios, updateUsuario,
+  createTicketHoras, deleteTicketHoras,
 } from '../services/api'
 
-const ESTADOS    = ['Pendiente', 'En curso', 'Completado', 'Pendiente de facturar', 'Facturado']
+const ESTADOS    = ['Pendiente', 'En curso', 'Pausado', 'Completado', 'Pendiente de facturar', 'Facturado']
 const PRIORIDADES = ['Baja', 'Media', 'Alta', 'Urgente']
 const DEVICE_CATEGORIAS = [
   { key: 'equipo',   label: 'Equipos',    icon: 'desktop-outline' },
@@ -66,7 +67,7 @@ function PrioridadBadge({ p, colors }) {
 }
 
 function EstadoBadge({ e, colors }) {
-  const cfg = { 'Pendiente': { bg: colors.warningBg, txt: colors.warning }, 'En curso': { bg: colors.infoBg, txt: colors.info }, 'Completado': { bg: colors.successBg, txt: colors.success }, 'Pendiente de facturar': { bg: colors.purpleBg, txt: colors.purple }, 'Facturado': { bg: colors.cyanBg, txt: colors.cyan } }
+  const cfg = { 'Pendiente': { bg: colors.warningBg, txt: colors.warning }, 'En curso': { bg: colors.infoBg, txt: colors.info }, 'Pausado': { bg: '#f1f5f9', txt: '#64748b' }, 'Completado': { bg: colors.successBg, txt: colors.success }, 'Pendiente de facturar': { bg: colors.purpleBg, txt: colors.purple }, 'Facturado': { bg: colors.cyanBg, txt: colors.cyan } }
   const c = cfg[e] || { bg: colors.badgeGray, txt: colors.textMuted }
   return <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: c.bg }}><Text style={{ fontSize: 12, fontWeight: '700', color: c.txt }}>{e}</Text></View>
 }
@@ -106,6 +107,11 @@ export default function TicketDetalleScreen({ route, navigation }) {
   const [savingNotas, setSavingNotas] = useState(false)
   const [notasSaved, setNotasSaved]   = useState(false)
   const notasTimer = useRef(null)
+  // Horas manuales
+  const [horasInicio, setHorasInicio] = useState('')
+  const [horasFin, setHorasFin]       = useState('')
+  const [horasDesc, setHorasDesc]     = useState('')
+  const [savingHoras, setSavingHoras] = useState(false)
   // File upload
   const [uploadingFiles, setUploadingFiles] = useState(false)
   const [commentFiles, setCommentFiles]     = useState([])
@@ -156,6 +162,37 @@ export default function TicketDetalleScreen({ route, navigation }) {
       setTicket(t => ({ ...t, prioridad }))
       setShowPrioModal(false)
     } catch (e) { Alert.alert('Error', e.message) }
+  }
+
+  // ── Horas manuales ──────────────────────────────────────────────────────
+  async function handleAddHoras() {
+    if (!horasInicio || !horasFin) return Alert.alert('Error', 'Indica fecha/hora de inicio y fin')
+    const inicio = new Date(horasInicio)
+    const fin = new Date(horasFin)
+    if (fin <= inicio) return Alert.alert('Error', 'La fecha fin debe ser posterior a la de inicio')
+    setSavingHoras(true)
+    try {
+      await createTicketHoras(ticket.id, { fecha_inicio: horasInicio, fecha_fin: horasFin, descripcion: horasDesc || undefined })
+      const fresh = await getTicket(ticket.id)
+      setTicket(fresh)
+      setHorasInicio('')
+      setHorasFin('')
+      setHorasDesc('')
+    } catch (e) { Alert.alert('Error', e.message) }
+    setSavingHoras(false)
+  }
+
+  async function handleDeleteHoras(horaId) {
+    Alert.alert('Eliminar', '¿Eliminar este registro de horas?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Eliminar', style: 'destructive', onPress: async () => {
+        try {
+          await deleteTicketHoras(ticket.id, horaId)
+          const fresh = await getTicket(ticket.id)
+          setTicket(fresh)
+        } catch (e) { Alert.alert('Error', e.message) }
+      }},
+    ])
   }
 
   // ── Edit ticket ─────────────────────────────────────────────────────────────
@@ -337,12 +374,18 @@ export default function TicketDetalleScreen({ route, navigation }) {
           <TouchableOpacity onPress={() => setShowPrioModal(true)}>
             <PrioridadBadge p={ticket.prioridad} colors={colors} />
           </TouchableOpacity>
-          {ticket.horas_totales > 0 && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.badgeGray, borderRadius: 12 }}>
-              <Ionicons name="time-outline" size={13} color={colors.textMuted} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textMuted }}>{formatHoras(ticket.horas_totales)}</Text>
-            </View>
-          )}
+          {(() => {
+            const estadoCerrado = ['Completado', 'Pendiente de facturar', 'Facturado'].includes(ticket.estado)
+            const pausado = ticket.estado === 'Pausado' || ticket.estado === 'Pendiente'
+            const h = ticket.horas_totales > 0 ? ticket.horas_totales : (ticket.horas_transcurridas || 0)
+            if (h <= 0 && !estadoCerrado) return null
+            return (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.badgeGray, borderRadius: 12 }}>
+                <Ionicons name={estadoCerrado ? 'lock-closed-outline' : pausado ? 'pause-outline' : 'time-outline'} size={13} color={pausado ? '#64748b' : colors.textMuted} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: pausado ? '#64748b' : colors.textMuted }}>{formatHoras(h)}</Text>
+              </View>
+            )
+          })()}
         </View>
 
         {/* ── Info panel ── */}
@@ -424,6 +467,7 @@ export default function TicketDetalleScreen({ route, navigation }) {
         <View style={{ flexDirection: 'row', backgroundColor: colors.headerBg, borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: 16 }}>
           {[
             { key: 'comentarios', label: 'Comentarios' },
+            { key: 'horas',       label: 'Horas' },
             { key: 'historial',   label: 'Historial' },
             { key: 'notas',       label: 'Notas' },
           ].map(tab => (
@@ -436,6 +480,92 @@ export default function TicketDetalleScreen({ route, navigation }) {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* ── HORAS tab ── */}
+        {activeTab === 'horas' && (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+            {/* Form */}
+            <View style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, marginBottom: 16 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Registrar horas</Text>
+              <View style={{ marginBottom: 8 }}>
+                <Text style={{ fontSize: 11, color: colors.textMuted, marginBottom: 4 }}>Inicio (YYYY-MM-DD HH:MM)</Text>
+                <TextInput
+                  style={{ backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: colors.text }}
+                  value={horasInicio}
+                  onChangeText={setHorasInicio}
+                  placeholder="2026-04-09 09:00"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+              <View style={{ marginBottom: 8 }}>
+                <Text style={{ fontSize: 11, color: colors.textMuted, marginBottom: 4 }}>Fin (YYYY-MM-DD HH:MM)</Text>
+                <TextInput
+                  style={{ backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: colors.text }}
+                  value={horasFin}
+                  onChangeText={setHorasFin}
+                  placeholder="2026-04-09 13:00"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+              <View style={{ marginBottom: 8 }}>
+                <Text style={{ fontSize: 11, color: colors.textMuted, marginBottom: 4 }}>Descripción (opcional)</Text>
+                <TextInput
+                  style={{ backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: colors.text }}
+                  value={horasDesc}
+                  onChangeText={setHorasDesc}
+                  placeholder="Qué se hizo..."
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+              <TouchableOpacity
+                onPress={handleAddHoras}
+                disabled={savingHoras}
+                style={{ backgroundColor: colors.primary, borderRadius: 8, paddingVertical: 10, alignItems: 'center', opacity: savingHoras ? 0.6 : 1 }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{savingHoras ? 'Guardando...' : 'Añadir'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* List */}
+            {(ticket.ticket_horas || []).length === 0 ? (
+              <View style={{ alignItems: 'center', paddingTop: 30, gap: 8 }}>
+                <Ionicons name="time-outline" size={36} color={colors.textMuted} />
+                <Text style={{ fontSize: 14, color: colors.textMuted }}>No hay horas registradas</Text>
+              </View>
+            ) : (
+              <>
+                {[...(ticket.ticket_horas || [])].sort((a, b) => a.fecha_inicio > b.fecha_inicio ? -1 : 1).map(h => {
+                  const op = (ticket.ticket_asignaciones || []).find(a => a.user_id === h.user_id)
+                  const ms = new Date(h.fecha_fin) - new Date(h.fecha_inicio)
+                  const hrs = Math.round(ms / 36e5 * 100) / 100
+                  const fmtDt = (iso) => new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+                  return (
+                    <View key={h.id} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, marginBottom: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{hrs}h</Text>
+                          <Text style={{ fontSize: 11, color: colors.textMuted }}>{fmtDt(h.fecha_inicio)} → {fmtDt(h.fecha_fin)}</Text>
+                        </View>
+                        <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600' }}>{op?.profiles?.nombre || '—'}</Text>
+                        {h.descripcion ? <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>{h.descripcion}</Text> : null}
+                      </View>
+                      {h.user_id === user?.id && (
+                        <TouchableOpacity onPress={() => handleDeleteHoras(h.id)} style={{ padding: 6 }}>
+                          <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )
+                })}
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                    Total: {Math.round((ticket.ticket_horas || []).reduce((s, h) => s + Math.max(0, (new Date(h.fecha_fin) - new Date(h.fecha_inicio)) / 36e5), 0) * 100) / 100}h
+                  </Text>
+                </View>
+              </>
+            )}
+          </ScrollView>
+        )}
 
         {/* ── NOTAS tab ── (not keyboard-related, just a flex TextInput) */}
         {activeTab === 'notas' && (
