@@ -173,6 +173,13 @@ export const getChatArchivoUrl     = (id)       => apiFetch(`/api/v2/chat/archiv
 export const getChatPrefs          = ()         => apiFetch('/api/v2/chat/prefs')
 export const updateChatPrefs       = (prefs)    => apiFetch('/api/v2/chat/prefs', { method: 'PUT', body: JSON.stringify({ prefs }) })
 
+// ── Calendario ───────────────────────────────────────────────────────────
+export const getCalendarioEventos       = (p={})    => apiFetch(`/api/v2/calendario?${new URLSearchParams(p)}`)
+export const getCalendarioTodos         = (p={})    => apiFetch(`/api/v2/calendario/todos?${new URLSearchParams(p)}`)
+export const createCalendarioEvento     = (d)       => apiFetch('/api/v2/calendario', { method: 'POST', body: JSON.stringify(d) })
+export const updateCalendarioEvento     = (id, d)   => apiFetch(`/api/v2/calendario/${id}`, { method: 'PUT', body: JSON.stringify(d) })
+export const deleteCalendarioEvento     = (id)      => apiFetch(`/api/v2/calendario/${id}`, { method: 'DELETE' })
+
 export async function sendChatMensaje(canalId, contenido, ticketRefId = null, files = []) {
   const token = await SecureStore.getItemAsync('hola_token')
   if (files && files.length > 0) {

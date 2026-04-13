@@ -18,6 +18,7 @@ import TicketDetalleScreen            from '../screens/TicketDetalleScreen'
 import ChatScreen                     from '../screens/ChatScreen'
 import EstadisticasScreen             from '../screens/EstadisticasScreen'
 import UsuariosScreen                 from '../screens/UsuariosScreen'
+import CalendarioScreen               from '../screens/CalendarioScreen'
 import ClienteIncidenciasScreen       from '../screens/ClienteIncidenciasScreen'
 import ClienteIncidenciaDetalleScreen from '../screens/ClienteIncidenciaDetalleScreen'
 
@@ -76,6 +77,7 @@ function AdminTabs() {
           const icons = {
             Empresas:      ['business',   'business-outline'],
             Tickets:       ['headset',    'headset-outline'],
+            Calendario:    ['calendar',   'calendar-outline'],
             Chat:          ['chatbubbles','chatbubbles-outline'],
             'Estadísticas':['bar-chart',  'bar-chart-outline'],
             Usuarios:      ['people',     'people-outline'],
@@ -107,6 +109,7 @@ function AdminTabs() {
         <Tab.Screen name="Usuarios" component={UsuariosScreen} />
       )}
       <Tab.Screen name="Tickets"      component={TicketsStack} />
+      <Tab.Screen name="Calendario"   component={CalendarioScreen} />
       {(rol === 'admin' || rol === 'gestor') && (
         <Tab.Screen name="Estadísticas" component={EstadisticasScreen} />
       )}
