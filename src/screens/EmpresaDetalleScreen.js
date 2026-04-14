@@ -509,11 +509,18 @@ export default function EmpresaDetalleScreen({ route, navigation }) {
   const loadDispositivos = useCallback(async (cat) => {
     setLoadingDisp(true)
     try {
-      const data = await getDispositivos(empresa.id, cat)
-      setDispositivos(Array.isArray(data) ? data : [])
+      const fils = allEmpresas.filter(e => e.empresa_matriz_id === empresa.id)
+      if (fils.length > 0) {
+        const allIds = [empresa.id, ...fils.map(f => f.id)]
+        const results = await Promise.all(allIds.map(id => getDispositivos(id, cat)))
+        setDispositivos(results.flat())
+      } else {
+        const data = await getDispositivos(empresa.id, cat)
+        setDispositivos(Array.isArray(data) ? data : [])
+      }
     } catch {}
     finally { setLoadingDisp(false) }
-  }, [empresa.id])
+  }, [empresa.id, allEmpresas])
 
   useEffect(() => { loadDispositivos(catTab) }, [catTab])
 

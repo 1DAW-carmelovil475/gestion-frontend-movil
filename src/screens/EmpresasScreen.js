@@ -568,10 +568,14 @@ export default function EmpresasScreen({ navigation }) {
     for (const emp of paginatedRoot) {
       const matriz = !searchActive && isMatriz(emp)
       const filiales = matriz ? getFiliales(emp.id) : []
-      items.push({ type: 'empresa', empresa: emp, isMatriz: matriz, isFilial: false, filialesCount: filiales.length })
+      const propioCount = dispositivosCounts[emp.id] || 0
+      const dispCount = matriz
+        ? propioCount + filiales.reduce((sum, f) => sum + (dispositivosCounts[f.id] || 0), 0)
+        : propioCount
+      items.push({ type: 'empresa', empresa: emp, isMatriz: matriz, isFilial: false, filialesCount: filiales.length, dispositivosCount: dispCount })
       if (matriz && expandedMatrices[emp.id]) {
         for (const fil of filiales) {
-          items.push({ type: 'empresa', empresa: fil, isMatriz: false, isFilial: true, filialesCount: 0 })
+          items.push({ type: 'empresa', empresa: fil, isMatriz: false, isFilial: true, filialesCount: 0, dispositivosCount: dispositivosCounts[fil.id] || 0 })
         }
       }
     }
@@ -658,7 +662,7 @@ export default function EmpresasScreen({ navigation }) {
             isFilial={item.isFilial}
             isExpanded={!!expandedMatrices[item.empresa.id]}
             filialesCount={item.filialesCount}
-            dispositivosCount={dispositivosCounts[item.empresa.id] || 0}
+            dispositivosCount={item.dispositivosCount}
             onToggleExpand={() => toggleExpand(item.empresa.id)}
             onPress={() => navigation.navigate('EmpresaDetalle', { empresa: item.empresa, allEmpresas: empresas })}
             onEdit={handleEdit}
