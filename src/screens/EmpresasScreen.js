@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
-import { getEmpresas, createEmpresa, updateEmpresa, deleteEmpresa } from '../services/api'
+import { getEmpresas, createEmpresa, updateEmpresa, deleteEmpresa, getDispositivos } from '../services/api'
 
 const SERVICIOS = ['Cloud', 'Soporte', 'Hardware', 'Redes', 'Seguridad', 'Backup']
 
@@ -317,7 +317,7 @@ function EstadoBadge({ estado, colors }) {
 }
 
 // ── Empresa card ──────────────────────────────────────────────────────────────
-function EmpresaCard({ empresa, onPress, onEdit, onDelete, colors, isMatriz, isFilial, isExpanded, onToggleExpand, filialesCount }) {
+function EmpresaCard({ empresa, onPress, onEdit, onDelete, colors, isMatriz, isFilial, isExpanded, onToggleExpand, filialesCount, dispositivosCount }) {
   return (
     <View style={[
       cardStyles.card,
@@ -377,6 +377,14 @@ function EmpresaCard({ empresa, onPress, onEdit, onDelete, colors, isMatriz, isF
             ) : null}
           </View>
         )}
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+          <Ionicons name="server-outline" size={13} color={colors.textMuted} />
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>
+            <Text style={{ fontWeight: '700', color: colors.text }}>{dispositivosCount}</Text>
+            {' dispositivo'}{dispositivosCount !== 1 ? 's' : ''}
+          </Text>
+        </View>
 
         {empresa.servicios && empresa.servicios.length > 0 && (
           <View style={cardStyles.servicios}>
@@ -440,19 +448,25 @@ const cardStyles = StyleSheet.create({
 export default function EmpresasScreen({ navigation }) {
   const { user, logout } = useAuth()
   const { colors, isDark, toggleTheme } = useTheme()
-  const [empresas, setEmpresas]       = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [refreshing, setRefreshing]   = useState(false)
-  const [search, setSearch]           = useState('')
-  const [showModal, setShowModal]     = useState(false)
-  const [editingEmpresa, setEditingEmpresa] = useState(null)
+  const [empresas, setEmpresas]               = useState([])
+  const [dispositivosCounts, setDispositivosCounts] = useState({})
+  const [loading, setLoading]                 = useState(true)
+  const [refreshing, setRefreshing]           = useState(false)
+  const [search, setSearch]                   = useState('')
+  const [showModal, setShowModal]             = useState(false)
+  const [editingEmpresa, setEditingEmpresa]   = useState(null)
   const [expandedMatrices, setExpandedMatrices] = useState({})
-  const [page, setPage]               = useState(1)
+  const [page, setPage]                       = useState(1)
 
   const load = useCallback(async () => {
     try {
-      const data = await getEmpresas()
+      const [data, dispositivos] = await Promise.all([getEmpresas(), getDispositivos()])
       setEmpresas(Array.isArray(data) ? data : [])
+      const counts = {}
+      ;(dispositivos || []).forEach(d => {
+        if (d.empresa_id) counts[d.empresa_id] = (counts[d.empresa_id] || 0) + 1
+      })
+      setDispositivosCounts(counts)
     } catch (e) {
       Alert.alert('Error', e.message)
     }
@@ -644,6 +658,7 @@ export default function EmpresasScreen({ navigation }) {
             isFilial={item.isFilial}
             isExpanded={!!expandedMatrices[item.empresa.id]}
             filialesCount={item.filialesCount}
+            dispositivosCount={dispositivosCounts[item.empresa.id] || 0}
             onToggleExpand={() => toggleExpand(item.empresa.id)}
             onPress={() => navigation.navigate('EmpresaDetalle', { empresa: item.empresa, allEmpresas: empresas })}
             onEdit={handleEdit}

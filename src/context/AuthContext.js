@@ -61,11 +61,21 @@ export function AuthProvider({ children }) {
   }
 
   async function login(email, password) {
-    const res = await fetch(`${API_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 10000)
+    let res
+    try {
+      res = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+        signal: controller.signal,
+      })
+    } catch (e) {
+      throw new Error('No se puede conectar con el servidor. Comprueba tu red.')
+    } finally {
+      clearTimeout(timer)
+    }
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Email o contraseña incorrectos.')
 
