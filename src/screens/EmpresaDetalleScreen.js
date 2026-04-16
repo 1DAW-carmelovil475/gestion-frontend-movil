@@ -13,23 +13,25 @@ import {
 } from '../services/api'
 
 const TIPO_SUGERENCIAS = {
-  equipo:   ['PC', 'Portátil', 'Cámara de Seguridad', 'Impresora', 'Tablet', 'All-in-One'],
-  servidor: ['Servidor Físico', 'Servidor Virtual', 'Servidor de Archivos'],
-  nas:      ['NAS Synology', 'NAS QNAP'],
-  red:      ['Router', 'Switch', 'Access Point', 'Firewall', 'Modem'],
-  correo:   ['Exchange', 'Gmail', 'Outlook', 'IMAP'],
-  otro:     [],
-  web:      ['Web corporativa', 'Tienda online', 'Portal', 'Aplicación web'],
+  equipo:    ['PC', 'Portátil', 'Cámara de Seguridad', 'Tablet', 'All-in-One'],
+  servidor:  ['Servidor Físico', 'Servidor Virtual', 'Servidor de Archivos'],
+  nas:       ['NAS Synology', 'NAS QNAP'],
+  red:       ['Router', 'Switch', 'Access Point', 'Firewall', 'Modem'],
+  impresora: ['Láser', 'Inkjet', 'Multifunción', 'Térmica', 'Ploter'],
+  correo:    ['Exchange', 'Gmail', 'Outlook', 'IMAP'],
+  otro:      [],
+  web:       ['Web corporativa', 'Tienda online', 'Portal', 'Aplicación web'],
 }
 
 const CATEGORIAS = [
-  { key: 'equipo',   label: 'Equipos',    icon: 'desktop-outline' },
-  { key: 'servidor', label: 'Servidores', icon: 'server-outline' },
-  { key: 'nas',      label: 'NAS',        icon: 'save-outline' },
-  { key: 'red',      label: 'Redes',      icon: 'git-network-outline' },
-  { key: 'web',      label: 'Web',        icon: 'globe-outline' },
-  { key: 'correo',   label: 'Correos',    icon: 'mail-outline' },
-  { key: 'otro',     label: 'Otros',      icon: 'cube-outline' },
+  { key: 'equipo',    label: 'Equipos',    icon: 'desktop-outline' },
+  { key: 'servidor',  label: 'Servidores', icon: 'server-outline' },
+  { key: 'nas',       label: 'NAS',        icon: 'save-outline' },
+  { key: 'red',       label: 'Redes',      icon: 'git-network-outline' },
+  { key: 'impresora', label: 'Impresoras', icon: 'print-outline' },
+  { key: 'web',       label: 'Web',        icon: 'globe-outline' },
+  { key: 'correo',    label: 'Correos',    icon: 'mail-outline' },
+  { key: 'otro',      label: 'Otros',      icon: 'cube-outline' },
 ]
 
 const CAMPOS_CAT = {
@@ -57,6 +59,10 @@ const CAMPOS_CAT = {
     { key: 'ip',       label: 'IP', copyable: true },
     { key: 'usuario',  label: 'Usuario' },
     { key: 'password', label: 'Contraseña', secret: true },
+  ],
+  impresora: [
+    { key: 'modelo', label: 'Modelo' },
+    { key: 'ip',     label: 'IP', copyable: true },
   ],
   web: [
     { key: 'url', label: 'URL', copyable: true },
@@ -249,28 +255,28 @@ function DispositivoModal({ visible, categoriaActiva, dispositivo, empresaId, on
 
           <ScrollView style={{ padding: 20 }} keyboardShouldPersistTaps="handled">
             {categoriaActiva !== 'web' && (
-              <>
-                <View style={{ marginBottom: 14 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Nombre *</Text>
-                  <TextInput
-                    style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
-                    value={form.nombre || ''}
-                    onChangeText={v => setForm(f => ({ ...f, nombre: v }))}
-                    placeholder="Nombre del dispositivo"
-                    placeholderTextColor={colors.textMuted}
-                  />
-                </View>
-                <View style={{ marginBottom: 14 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>N° Serie</Text>
-                  <TextInput
-                    style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
-                    value={form.numero_serie || ''}
-                    onChangeText={v => setForm(f => ({ ...f, numero_serie: v }))}
-                    placeholder="Número de serie"
-                    placeholderTextColor={colors.textMuted}
-                  />
-                </View>
-              </>
+              <View style={{ marginBottom: 14 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>Nombre *</Text>
+                <TextInput
+                  style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
+                  value={form.nombre || ''}
+                  onChangeText={v => setForm(f => ({ ...f, nombre: v }))}
+                  placeholder="Nombre del dispositivo"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            )}
+            {categoriaActiva !== 'web' && categoriaActiva !== 'impresora' && (
+              <View style={{ marginBottom: 14 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase' }}>N° Serie</Text>
+                <TextInput
+                  style={{ backgroundColor: colors.inputBg, borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.text }}
+                  value={form.numero_serie || ''}
+                  onChangeText={v => setForm(f => ({ ...f, numero_serie: v }))}
+                  placeholder="Número de serie"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
             )}
 
             {campos.map(({ key, label }) => {
