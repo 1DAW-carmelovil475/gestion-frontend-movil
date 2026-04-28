@@ -80,13 +80,12 @@ const CAMPOS_CAT = {
   ],
 }
 
-const EMPRESA_ESTADOS = ['Activo', 'En revisión', 'Suspendido']
+const EMPRESA_ESTADOS = ['Activo', 'Suspendido']
 
 function getEstadoStyle(estado) {
   const e = String(estado || 'Activo')
-  if (e === 'Activo')      return { bg: '#dcfce7', text: '#16a34a' }
-  if (e === 'En revisión') return { bg: '#fef9c3', text: '#b45309' }
-  return                          { bg: '#fee2e2', text: '#dc2626' }
+  if (e === 'Activo') return { bg: '#dcfce7', text: '#16a34a' }
+  return                     { bg: '#fee2e2', text: '#dc2626' }
 }
 
 function EditEmpresaSheet({ visible, empresa, onClose, onSave, colors }) {
@@ -145,7 +144,7 @@ function EditEmpresaSheet({ visible, empresa, onClose, onSave, colors }) {
             ))}
             {/* Estado */}
             <View style={{ marginBottom: 14 }}>
-              <Text style={labelStyle}>Estado</Text>
+              <Text style={labelStyle}>Mantenimiento</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 {EMPRESA_ESTADOS.map(e => {
                   const sel = form.estado === e
