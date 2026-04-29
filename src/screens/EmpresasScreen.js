@@ -28,12 +28,13 @@ function getInitials(nombre) {
   return nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
 }
 
-const MODAL_TABS = ['Datos', 'Servicios', 'Contactos']
+const MODAL_TABS = ['Datos', 'Contactos']
 
 function EmpresaModal({ visible, empresa, onClose, onSave, colors }) {
   const [tab, setTab] = useState('Datos')
   const [form, setForm] = useState({
     nombre: '', cif: '', email: '', telefono: '', direccion: '',
+    poblacion: '', provincia: '', cp: '',
     notas: '', empresa_matriz_nombre: '', estado: 'Activo',
     servicios: [], contactos: [],
   })
@@ -48,6 +49,9 @@ function EmpresaModal({ visible, empresa, onClose, onSave, colors }) {
           email:                 empresa.email || '',
           telefono:              empresa.telefono || '',
           direccion:             empresa.direccion || '',
+          poblacion:             empresa.poblacion || '',
+          provincia:             empresa.provincia || '',
+          cp:                    empresa.cp || '',
           notas:                 empresa.notas || '',
           empresa_matriz_nombre: empresa.empresa_matriz_nombre || '',
           estado:                empresa.estado || 'Activo',
@@ -57,6 +61,7 @@ function EmpresaModal({ visible, empresa, onClose, onSave, colors }) {
       } else {
         setForm({
           nombre: '', cif: '', email: '', telefono: '', direccion: '',
+          poblacion: '', provincia: '', cp: '',
           notas: '', empresa_matriz_nombre: '', estado: 'Activo',
           servicios: [], contactos: [],
         })
@@ -129,7 +134,10 @@ function EmpresaModal({ visible, empresa, onClose, onSave, colors }) {
                   { key: 'cif',      label: 'CIF',          placeholder: 'B12345678' },
                   { key: 'email',    label: 'Email',        placeholder: 'empresa@email.com' },
                   { key: 'telefono', label: 'Teléfono',     placeholder: '+34 600 000 000' },
-                  { key: 'direccion',label: 'Dirección',    placeholder: 'Calle, número, ciudad' },
+                  { key: 'direccion',label: 'Dirección',    placeholder: 'Calle, número' },
+                  { key: 'poblacion',label: 'Población',    placeholder: 'Ej: Sevilla' },
+                  { key: 'provincia',label: 'Provincia',    placeholder: 'Ej: Sevilla' },
+                  { key: 'cp',       label: 'CP',           placeholder: 'Ej: 41001' },
                   { key: 'empresa_matriz_nombre', label: 'Empresa matriz', placeholder: 'Opcional' },
                 ].map(({ key, label, placeholder }) => (
                   <View key={key} style={s.field}>
@@ -174,28 +182,6 @@ function EmpresaModal({ visible, empresa, onClose, onSave, colors }) {
                     multiline
                   />
                 </View>
-              </View>
-            )}
-
-            {tab === 'Servicios' && (
-              <View style={s.serviciosGrid}>
-                {SERVICIOS.map(sv => {
-                  const active = form.servicios.includes(sv)
-                  return (
-                    <TouchableOpacity
-                      key={sv}
-                      style={[s.servBadge, active && s.servBadgeActive]}
-                      onPress={() => toggleServicio(sv)}
-                    >
-                      <Ionicons
-                        name={active ? 'checkmark-circle' : 'ellipse-outline'}
-                        size={16}
-                        color={active ? colors.primary : colors.textMuted}
-                      />
-                      <Text style={[s.servTxt, active && s.servTxtActive]}>{sv}</Text>
-                    </TouchableOpacity>
-                  )
-                })}
               </View>
             )}
 

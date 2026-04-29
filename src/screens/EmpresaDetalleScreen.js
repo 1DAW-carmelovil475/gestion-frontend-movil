@@ -98,6 +98,9 @@ function EditEmpresaSheet({ visible, empresa, onClose, onSave, colors }) {
         email:     empresa.email     || '',
         telefono:  empresa.telefono  || '',
         direccion: empresa.direccion || '',
+        poblacion: empresa.poblacion || '',
+        provincia: empresa.provincia || '',
+        cp:        empresa.cp        || '',
         notas:     empresa.notas     || '',
         estado:    empresa.estado    || 'Activo',
         servicios: empresa.servicios || [],
@@ -129,7 +132,10 @@ function EditEmpresaSheet({ visible, empresa, onClose, onSave, colors }) {
               { key: 'nombre',    label: 'Nombre *',    placeholder: 'Nombre de la empresa' },
               { key: 'email',     label: 'Email',       placeholder: 'empresa@email.com' },
               { key: 'telefono',  label: 'Teléfono',    placeholder: '+34 600 000 000' },
-              { key: 'direccion', label: 'Dirección',   placeholder: 'Calle, número, ciudad' },
+              { key: 'direccion', label: 'Dirección',   placeholder: 'Calle, número' },
+              { key: 'poblacion', label: 'Población',   placeholder: 'Ej: Sevilla' },
+              { key: 'provincia', label: 'Provincia',   placeholder: 'Ej: Sevilla' },
+              { key: 'cp',        label: 'CP',          placeholder: 'Ej: 41001' },
             ].map(({ key, label, placeholder }) => (
               <View key={key} style={{ marginBottom: 14 }}>
                 <Text style={labelStyle}>{label}</Text>
@@ -603,6 +609,9 @@ export default function EmpresaDetalleScreen({ route, navigation }) {
             { icon: 'mail-outline',     label: 'Email',      value: empresa.email },
             { icon: 'call-outline',     label: 'Teléfono',   value: empresa.telefono },
             { icon: 'location-outline', label: 'Dirección',  value: empresa.direccion },
+            { icon: 'map-outline',      label: 'Población',  value: empresa.poblacion },
+            { icon: 'map-outline',      label: 'Provincia',  value: empresa.provincia },
+            { icon: 'mail-outline',     label: 'CP',         value: empresa.cp },
             { icon: 'business-outline', label: 'Empresa matriz', value: empresa.empresa_matriz_nombre },
           ].map(({ icon, label, value }) => value ? (
             <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
